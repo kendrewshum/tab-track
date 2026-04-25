@@ -10,7 +10,9 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "vercel-build": "npm run db:push && npm run build"
+    "vercel-build": "npm run db:push && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "next": "^15.1.0",
@@ -32,6 +34,7 @@
     "tailwindcss": "^3.4.1",
     "postcss": "^8",
     "autoprefixer": "^10.0.1",
-    "drizzle-kit": "^0.29.0"
+    "drizzle-kit": "^0.29.0",
+    "vitest": "^3.0.0"
   }
 }
