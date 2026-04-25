@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
-import { Plus, ArrowRight } from "lucide-react";
+import { Plus, ArrowRight, Pencil } from "lucide-react";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -171,6 +171,13 @@ export default async function GroupPage({
                     <span className="font-semibold text-slate-900">
                       {formatCurrency(expense.amount)}
                     </span>
+                    <Link
+                      href={`/groups/${id}/expenses/${expense.id}/edit`}
+                      className="text-slate-300 hover:text-slate-500 transition-colors"
+                      title="Edit expense"
+                    >
+                      <Pencil size={14} />
+                    </Link>
                     <ConfirmDeleteButton
                       action={deleteExpense.bind(null, id, expense.id)}
                       message="Delete this expense? This cannot be undone."

@@ -1,28 +1,65 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createExpense } from "@/app/actions";
+import { createExpense, updateExpense } from "@/app/actions";
 import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
 
 type Member = { id: string; name: string };
 type SplitType = "equal" | "shares" | "percentage" | "exact";
 
-export function ExpenseForm({ groupId, members }: { groupId: string; members: Member[] }) {
-  const [amount, setAmount] = useState("");
-  const [paidById, setPaidById] = useState(members[0]?.id ?? "");
-  const [splitType, setSplitType] = useState<SplitType>("equal");
+type ExistingExpense = {
+  id: string;
+  description: string;
+  amount: number;
+  paidById: string;
+  splitType: SplitType;
+  date: string;
+  splits: { memberId: string; amount: number }[];
+};
+
+export function ExpenseForm({
+  groupId,
+  members,
+  expense,
+}: {
+  groupId: string;
+  members: Member[];
+  expense?: ExistingExpense;
+}) {
+  const editing = !!expense;
+  const total = expense?.amount ?? 0;
+
+  const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
+  const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));
+  const [splitType, setSplitType] = useState<SplitType>(editing ? expense.splitType : "equal");
   const [participants, setParticipants] = useState<Set<string>>(
-    new Set(members.map((m) => m.id))
+    editing
+      ? new Set(expense.splits.map((s) => s.memberId))
+      : new Set(members.map((m) => m.id))
   );
   const [shareValues, setShareValues] = useState<Record<string, string>>(
     Object.fromEntries(members.map((m) => [m.id, "1"]))
   );
   const [pctValues, setPctValues] = useState<Record<string, string>>(
-    Object.fromEntries(members.map((m) => [m.id, ""]))
+    editing
+      ? Object.fromEntries(
+          members.map((m) => {
+            const s = expense.splits.find((s) => s.memberId === m.id);
+            return [m.id, s && total > 0 ? String(Math.round((s.amount / total) * 10000) / 100) : ""];
+          })
+        )
+      : Object.fromEntries(members.map((m) => [m.id, ""]))
   );
   const [exactValues, setExactValues] = useState<Record<string, string>>(
-    Object.fromEntries(members.map((m) => [m.id, ""]))
+    editing
+      ? Object.fromEntries(
+          members.map((m) => {
+            const s = expense.splits.find((s) => s.memberId === m.id);
+            return [m.id, s ? String(s.amount) : ""];
+          })
+        )
+      : Object.fromEntries(members.map((m) => [m.id, ""]))
   );
 
   const participantList = members.filter((m) => participants.has(m.id));
@@ -69,7 +106,9 @@ export function ExpenseForm({ groupId, members }: { groupId: string; members: Me
       ? Math.abs(pctTotal - 100) < 0.01
       : Math.abs(splitTotal - numericAmount) < 0.01);
 
-  const action = createExpense.bind(null, groupId);
+  const action = editing
+    ? updateExpense.bind(null, groupId, expense.id)
+    : createExpense.bind(null, groupId);
 
   return (
     <form action={action} className="space-y-5">
@@ -80,6 +119,7 @@ export function ExpenseForm({ groupId, members }: { groupId: string; members: Me
           name="description"
           required
           placeholder="e.g. Dinner, Hotel, Uber"
+          defaultValue={expense?.description}
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
         />
       </div>
@@ -106,7 +146,7 @@ export function ExpenseForm({ groupId, members }: { groupId: string; members: Me
             name="date"
             type="date"
             required
-            defaultValue={today()}
+            defaultValue={expense?.date ?? today()}
             className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
           />
         </div>
@@ -284,7 +324,7 @@ export function ExpenseForm({ groupId, members }: { groupId: string; members: Me
         disabled={!isValid}
         className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Add Expense
+        {editing ? "Save Changes" : "Add Expense"}
       </button>
     </form>
   );

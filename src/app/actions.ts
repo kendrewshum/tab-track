@@ -106,6 +106,57 @@ export async function createExpense(groupId: string, formData: FormData) {
   redirect(`/groups/${groupId}`);
 }
 
+export async function updateExpense(groupId: string, expenseId: string, formData: FormData) {
+  const description = (formData.get("description") as string).trim();
+  const amount = parseFloat(formData.get("amount") as string);
+  const paidById = formData.get("paidById") as string;
+  const splitType = formData.get("splitType") as SplitType;
+  const date = formData.get("date") as string;
+  const participantIds = formData.getAll("participants") as string[];
+
+  if (
+    !description ||
+    isNaN(amount) ||
+    amount <= 0 ||
+    !paidById ||
+    !date ||
+    participantIds.length === 0
+  )
+    return;
+
+  const inputs: SplitInputs = {
+    shares: Object.fromEntries(
+      participantIds.map((id) => [id, parseFloat(formData.get(`share_${id}`) as string) || 0])
+    ),
+    percentages: Object.fromEntries(
+      participantIds.map((id) => [id, parseFloat(formData.get(`pct_${id}`) as string) || 0])
+    ),
+    exact: Object.fromEntries(
+      participantIds.map((id) => [id, parseFloat(formData.get(`exact_${id}`) as string) || 0])
+    ),
+  };
+
+  const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs, paidById);
+  if (splits.length === 0) return;
+
+  await db.update(expenses).set({
+    description,
+    amount: Math.round(amount * 100) / 100,
+    paidById,
+    splitType,
+    date,
+  }).where(eq(expenses.id, expenseId));
+
+  await db.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
+
+  await db.insert(expenseSplits).values(
+    splits.map((s) => ({ id: generateId(), expenseId, ...s }))
+  );
+
+  revalidatePath(`/groups/${groupId}`);
+  redirect(`/groups/${groupId}`);
+}
+
 export async function deleteExpense(groupId: string, expenseId: string) {
   await db.delete(expenses).where(eq(expenses.id, expenseId));
   revalidatePath(`/groups/${groupId}`);
