@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createExpense } from "@/app/actions";
+import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
 
 type Member = { id: string; name: string };
@@ -9,6 +10,7 @@ type SplitType = "equal" | "shares" | "percentage" | "exact";
 
 export function ExpenseForm({ groupId, members }: { groupId: string; members: Member[] }) {
   const [amount, setAmount] = useState("");
+  const [paidById, setPaidById] = useState(members[0]?.id ?? "");
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [participants, setParticipants] = useState<Set<string>>(
     new Set(members.map((m) => m.id))
@@ -40,52 +42,20 @@ export function ExpenseForm({ groupId, members }: { groupId: string; members: Me
 
   const splits = useMemo(() => {
     if (numericAmount <= 0 || participantList.length === 0) return [];
-    const count = participantList.length;
-
-    if (splitType === "equal") {
-      const base = Math.round((numericAmount / count) * 100) / 100;
-      let remaining = numericAmount;
-      return participantList.map((m, i) => {
-        const a = i === count - 1 ? Math.round(remaining * 100) / 100 : base;
-        remaining -= base;
-        return { memberId: m.id, name: m.name, amount: a };
-      });
-    }
-
-    if (splitType === "shares") {
-      const shareNums = participantList.map((m) => parseFloat(shareValues[m.id]) || 0);
-      const totalShares = shareNums.reduce((s, n) => s + n, 0);
-      if (totalShares === 0) return [];
-      let remaining = numericAmount;
-      return participantList.map((m, i) => {
-        const a =
-          i === count - 1
-            ? Math.round(remaining * 100) / 100
-            : Math.round(((numericAmount * shareNums[i]) / totalShares) * 100) / 100;
-        remaining -= i === count - 1 ? 0 : a;
-        return { memberId: m.id, name: m.name, amount: a };
-      });
-    }
-
-    if (splitType === "percentage") {
-      let remaining = numericAmount;
-      return participantList.map((m, i) => {
-        const pct = parseFloat(pctValues[m.id]) || 0;
-        const a =
-          i === count - 1
-            ? Math.round(remaining * 100) / 100
-            : Math.round(((numericAmount * pct) / 100) * 100) / 100;
-        remaining -= i === count - 1 ? 0 : a;
-        return { memberId: m.id, name: m.name, amount: a };
-      });
-    }
-
-    return participantList.map((m) => ({
-      memberId: m.id,
-      name: m.name,
-      amount: parseFloat(exactValues[m.id]) || 0,
-    }));
-  }, [splitType, numericAmount, participantList, shareValues, pctValues, exactValues]);
+    const ids = participantList.map((m) => m.id);
+    const entries = computeSplits(
+      splitType,
+      numericAmount,
+      ids,
+      {
+        shares: Object.fromEntries(ids.map((id) => [id, parseFloat(shareValues[id]) || 0])),
+        percentages: Object.fromEntries(ids.map((id) => [id, parseFloat(pctValues[id]) || 0])),
+        exact: Object.fromEntries(ids.map((id) => [id, parseFloat(exactValues[id]) || 0])),
+      },
+      paidById
+    );
+    return entries.map((e, i) => ({ ...e, name: participantList[i].name }));
+  }, [splitType, numericAmount, participantList, shareValues, pctValues, exactValues, paidById]);
 
   const splitTotal = splits.reduce((s, x) => s + x.amount, 0);
   const pctTotal = participantList.reduce((s, m) => s + (parseFloat(pctValues[m.id]) || 0), 0);
@@ -148,6 +118,8 @@ export function ExpenseForm({ groupId, members }: { groupId: string; members: Me
         <select
           name="paidById"
           required
+          value={paidById}
+          onChange={(e) => setPaidById(e.target.value)}
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
         >
           {members.map((m) => (

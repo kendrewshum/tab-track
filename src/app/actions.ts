@@ -84,7 +84,7 @@ export async function createExpense(groupId: string, formData: FormData) {
     ),
   };
 
-  const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs);
+  const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs, paidById);
   if (splits.length === 0) return;
 
   const expenseId = generateId();
