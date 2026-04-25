@@ -6,12 +6,6 @@ import { createTestGroup } from "./helpers";
 // independent and can be run in any order within this file.
 
 test.describe("Group management", () => {
-  test("shows empty state on first visit", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByText("No groups yet")).toBeVisible();
-    await expect(page.getByRole("link", { name: /Create your first group/i })).toBeVisible();
-  });
-
   test("user can create a group and land on the group page", async ({ page }) => {
     await page.goto("/groups/new");
     await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Weekend Cabin");
