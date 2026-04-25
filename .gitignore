@@ -1,0 +1,23 @@
+# deps
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.production
+
+# local SQLite dev DB
+local.db
+local.db-shm
+local.db-wal
+
+# drizzle migrations (optional to commit)
+drizzle/
+
+# misc
+.DS_Store
+*.pem
