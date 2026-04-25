@@ -15,8 +15,6 @@ local.db
 local.db-shm
 local.db-wal
 
-# drizzle studio snapshot metadata (not needed in CI)
-drizzle/meta/
 
 # playwright
 playwright-report/
