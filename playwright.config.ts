@@ -35,7 +35,9 @@ export default defineConfig({
   webServer: {
     // Start Next.js on port 3001 so it doesn't conflict with the dev server.
     // TURSO_DATABASE_URL points at the dedicated test DB created by global-setup.
-    command: "npm run dev -- -p 3001",
+    // Use the pre-built production server (not dev) so pages are already compiled
+    // and tests don't stall waiting for on-demand compilation.
+    command: "npm run start -- -p 3001",
     url: "http://localhost:3001/api/health",
     reuseExistingServer: false,
     timeout: 60_000,

@@ -31,6 +31,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - run: npm run build
+        env:
+          TURSO_DATABASE_URL: file:${{ github.workspace }}/e2e-test.db
       - run: npm run test:e2e -- --project="Desktop Chrome"
         env:
           CI: true
