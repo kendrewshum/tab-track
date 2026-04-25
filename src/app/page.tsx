@@ -63,7 +63,7 @@ export default async function HomePage() {
                 <p className="font-semibold text-slate-900">{group.name}</p>
                 <p className="text-sm text-slate-400 mt-0.5">
                   {group.memberCount} member{group.memberCount !== 1 ? "s" : ""} ·{" "}
-                  {formatDate(group.createdAt.split("T")[0])}
+                  {formatDate(group.createdAt)}
                 </p>
               </div>
               <span className="text-slate-300 text-xl">›</span>
