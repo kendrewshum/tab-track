@@ -21,3 +21,4 @@ drizzle/
 # misc
 .DS_Store
 *.pem
+*.tsbuildinfo
