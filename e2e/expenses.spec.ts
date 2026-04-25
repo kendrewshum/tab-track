@@ -50,8 +50,8 @@ test.describe("Adding expenses – equal split", () => {
     page.on("dialog", (dialog) => dialog.accept());
     await page.locator("button[title='Delete expense']").click();
 
-    // No expenses left — balances should show settled up
-    await expect(page.getByText("All settled up!")).toBeVisible();
+    // No expenses left — expense list shows empty state
+    await expect(page.getByText("No expenses yet")).toBeVisible();
   });
 });
 
