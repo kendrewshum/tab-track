@@ -35,7 +35,7 @@ export default defineConfig({
     // setup-db.mjs wipes and recreates the test DB, then the dev server
     // starts. Running setup first guarantees the DB schema exists before
     // @libsql/client initialises its connection on the first request.
-    command: "node e2e/setup-db.mjs && npm run dev -- -p 3001",
+    command: "node e2e/setup-db.mjs && npm run start -- -p 3001",
     url: "http://localhost:3001/api/health",
     reuseExistingServer: false,
     timeout: 120_000,
