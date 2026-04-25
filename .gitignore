@@ -18,6 +18,13 @@ local.db-wal
 # drizzle migrations (optional to commit)
 drizzle/
 
+# playwright
+playwright-report/
+test-results/
+e2e-test.db
+e2e-test.db-shm
+e2e-test.db-wal
+
 # misc
 .DS_Store
 *.pem
