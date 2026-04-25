@@ -46,7 +46,8 @@ test.describe("Adding expenses – equal split", () => {
     await fillExpenseBase(page, id, { description: "Coffee", amount: "5", paidBy: "Alice" });
     await page.getByRole("button", { name: "Add Expense" }).click();
 
-    // Delete the expense using the × button
+    // Accept the confirmation dialog that appears before deletion
+    page.on("dialog", (dialog) => dialog.accept());
     await page.locator("button[title='Delete expense']").click();
 
     // No expenses left — balances should show settled up
@@ -104,5 +105,61 @@ test.describe("Adding expenses – exact split", () => {
 
     await expect(page.getByText("Alice: $10.00")).toBeVisible();
     await expect(page.getByText("Bob: $7.50")).toBeVisible();
+  });
+});
+
+test.describe("Editing expenses", () => {
+  test("edit page pre-populates description and amount", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Edit Prepop", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Original Dinner", amount: "20", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.locator("a[title='Edit expense']").click();
+    await expect(page).toHaveURL(/\/expenses\/[^/]+\/edit$/);
+
+    await expect(page.getByPlaceholder("e.g. Dinner, Hotel, Uber")).toHaveValue("Original Dinner");
+    await expect(page.getByPlaceholder("0.00")).toHaveValue("20");
+  });
+
+  test("can edit description and amount, changes appear on group page", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Edit Save", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Dinner", amount: "20", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.locator("a[title='Edit expense']").click();
+    await page.getByPlaceholder("e.g. Dinner, Hotel, Uber").fill("Updated Dinner");
+    await page.getByPlaceholder("0.00").fill("30");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    await expect(page).toHaveURL(`/groups/${id}`);
+    await expect(page.getByText("Updated Dinner")).toBeVisible();
+    await expect(page.getByText("$30.00")).toBeVisible();
+  });
+
+  test("editing amount recalculates balances", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Edit Balances", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Hotel", amount: "100", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await expect(page.getByText("+$50.00")).toBeVisible();
+
+    await page.locator("a[title='Edit expense']").click();
+    await page.getByPlaceholder("0.00").fill("200");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    await expect(page.getByText("+$100.00")).toBeVisible();
+  });
+
+  test("can change the payer on an existing expense", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Edit Payer", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Taxi", amount: "40", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.locator("a[title='Edit expense']").click();
+    await page.getByRole("combobox", { name: /Paid by/i }).selectOption({ label: "Bob" });
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    // Bob now paid — Bob is owed $20, Alice owes $20
+    await expect(page.getByText(/Paid by Bob/)).toBeVisible();
   });
 });
