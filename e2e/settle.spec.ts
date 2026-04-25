@@ -84,7 +84,8 @@ test.describe("Settle up", () => {
     await page.goto(`/groups/${id}/settle`);
     await page.getByRole("button", { name: "Mark as Settled" }).click();
 
-    // Settlement appears in history — delete it
+    // Accept the confirmation dialog that appears before deletion
+    page.on("dialog", (dialog) => dialog.accept());
     await page.locator("button[title='Delete record']").click();
 
     // Debt should reappear now that settlement is removed
