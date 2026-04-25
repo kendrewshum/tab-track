@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import path from "path";
+
+const testDbPath = path.resolve(__dirname, "e2e-test.db");
 
 // E2E tests run against a dedicated SQLite file that is wiped and recreated
 // before every test run (see e2e/global-setup.ts). Tests run sequentially
@@ -37,7 +40,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 60_000,
     env: {
-      TURSO_DATABASE_URL: "file:e2e-test.db",
+      TURSO_DATABASE_URL: `file:${testDbPath}`,
     },
   },
 });
