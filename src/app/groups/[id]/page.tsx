@@ -9,7 +9,8 @@ import { db } from "@/db";
 import { expenses, expenseSplits, groups, members, settlements } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { addMember, deleteExpense, deleteGroup } from "@/app/actions";
+import { addMember, deleteExpense } from "@/app/actions";
+import { DeleteGroupButton } from "./delete-group-button";
 
 export default async function GroupPage({
   params,
@@ -213,19 +214,7 @@ export default async function GroupPage({
 
       {/* Danger zone */}
       <section className="pt-2">
-        <form action={deleteGroup.bind(null, id)}>
-          <button
-            type="submit"
-            className="text-xs text-slate-400 hover:text-red-500 transition-colors"
-            onClick={(e) => {
-              if (!confirm("Delete this group and all its expenses? This cannot be undone.")) {
-                e.preventDefault();
-              }
-            }}
-          >
-            Delete group
-          </button>
-        </form>
+        <DeleteGroupButton groupId={id} />
       </section>
     </div>
   );

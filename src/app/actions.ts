@@ -12,6 +12,7 @@ import {
   members,
   settlements,
 } from "@/db/schema";
+import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
 import { generateId } from "@/lib/utils";
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
@@ -51,68 +52,11 @@ export async function addMember(groupId: string, formData: FormData) {
 
 // ─── Expenses ────────────────────────────────────────────────────────────────
 
-type SplitEntry = { memberId: string; amount: number };
-
-function computeSplits(
-  splitType: string,
-  amount: number,
-  participantIds: string[],
-  formData: FormData
-): SplitEntry[] {
-  const count = participantIds.length;
-
-  if (splitType === "equal") {
-    const base = Math.round((amount / count) * 100) / 100;
-    let remaining = amount;
-    return participantIds.map((id, i) => {
-      const a = i === count - 1 ? Math.round(remaining * 100) / 100 : base;
-      remaining -= base;
-      return { memberId: id, amount: a };
-    });
-  }
-
-  if (splitType === "shares") {
-    const shareNums = participantIds.map(
-      (id) => parseFloat(formData.get(`share_${id}`) as string) || 0
-    );
-    const totalShares = shareNums.reduce((s, n) => s + n, 0);
-    if (totalShares === 0) return [];
-    let remaining = amount;
-    return participantIds.map((id, i) => {
-      const a =
-        i === count - 1
-          ? Math.round(remaining * 100) / 100
-          : Math.round((amount * shareNums[i]) / totalShares * 100) / 100;
-      remaining -= i === count - 1 ? 0 : a;
-      return { memberId: id, amount: a };
-    });
-  }
-
-  if (splitType === "percentage") {
-    let remaining = amount;
-    return participantIds.map((id, i) => {
-      const pct = parseFloat(formData.get(`pct_${id}`) as string) || 0;
-      const a =
-        i === count - 1
-          ? Math.round(remaining * 100) / 100
-          : Math.round((amount * pct) / 100 * 100) / 100;
-      remaining -= i === count - 1 ? 0 : a;
-      return { memberId: id, amount: a };
-    });
-  }
-
-  // exact
-  return participantIds.map((id) => ({
-    memberId: id,
-    amount: parseFloat(formData.get(`exact_${id}`) as string) || 0,
-  }));
-}
-
 export async function createExpense(groupId: string, formData: FormData) {
   const description = (formData.get("description") as string).trim();
   const amount = parseFloat(formData.get("amount") as string);
   const paidById = formData.get("paidById") as string;
-  const splitType = formData.get("splitType") as string;
+  const splitType = formData.get("splitType") as SplitType;
   const date = formData.get("date") as string;
   const participantIds = formData.getAll("participants") as string[];
 
@@ -126,7 +70,21 @@ export async function createExpense(groupId: string, formData: FormData) {
   )
     return;
 
-  const splits = computeSplits(splitType, amount, participantIds, formData);
+  // Extract per-participant values from FormData into a plain object so the
+  // pure computeSplits function doesn't depend on browser APIs.
+  const inputs: SplitInputs = {
+    shares: Object.fromEntries(
+      participantIds.map((id) => [id, parseFloat(formData.get(`share_${id}`) as string) || 0])
+    ),
+    percentages: Object.fromEntries(
+      participantIds.map((id) => [id, parseFloat(formData.get(`pct_${id}`) as string) || 0])
+    ),
+    exact: Object.fromEntries(
+      participantIds.map((id) => [id, parseFloat(formData.get(`exact_${id}`) as string) || 0])
+    ),
+  };
+
+  const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs);
   if (splits.length === 0) return;
 
   const expenseId = generateId();
@@ -136,7 +94,7 @@ export async function createExpense(groupId: string, formData: FormData) {
     description,
     amount: Math.round(amount * 100) / 100,
     paidById,
-    splitType: splitType as "equal" | "shares" | "percentage" | "exact",
+    splitType,
     date,
   });
 
