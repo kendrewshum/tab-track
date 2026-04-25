@@ -160,6 +160,7 @@ export async function updateExpense(groupId: string, expenseId: string, formData
 export async function deleteExpense(groupId: string, expenseId: string) {
   await db.delete(expenses).where(eq(expenses.id, expenseId));
   revalidatePath(`/groups/${groupId}`);
+  redirect(`/groups/${groupId}`);
 }
 
 // ─── Settlements ─────────────────────────────────────────────────────────────
@@ -190,5 +191,6 @@ export async function createSettlement(groupId: string, formData: FormData) {
 
 export async function deleteSettlement(groupId: string, settlementId: string) {
   await db.delete(settlements).where(eq(settlements.id, settlementId));
-  revalidatePath(`/groups/${groupId}`);
+  revalidatePath(`/groups/${groupId}/settle`);
+  redirect(`/groups/${groupId}/settle`);
 }
