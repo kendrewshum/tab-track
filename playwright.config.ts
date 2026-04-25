@@ -36,7 +36,7 @@ export default defineConfig({
     // Start Next.js on port 3001 so it doesn't conflict with the dev server.
     // TURSO_DATABASE_URL points at the dedicated test DB created by global-setup.
     command: "npm run dev -- -p 3001",
-    url: "http://localhost:3001",
+    url: "http://localhost:3001/api/health",
     reuseExistingServer: false,
     timeout: 60_000,
     env: {
