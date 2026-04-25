@@ -8,7 +8,7 @@ export default async function globalSetup() {
     if (existsSync(file)) unlinkSync(file);
   }
 
-  execSync("npm run db:push", {
+  execSync("npm run db:push -- --force", {
     stdio: "inherit",
     env: { ...process.env, TURSO_DATABASE_URL: "file:e2e-test.db" },
   });
