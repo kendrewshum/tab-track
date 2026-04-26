@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
 import { groups, members } from "@/db/schema";
+import { requireGroupAccess } from "@/lib/server/session";
 import { ExpenseForm } from "./expense-form";
 
 export default async function NewExpensePage({
@@ -13,6 +14,7 @@ export default async function NewExpensePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();

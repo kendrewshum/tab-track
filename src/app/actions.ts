@@ -9,10 +9,12 @@ import {
   expenseRevisions,
   expenseSplits,
   expenses,
+  groupAccess,
   groups,
   members,
   settlements,
 } from "@/db/schema";
+import { requireGroupAccess, requireUser } from "@/lib/server/session";
 import { formatDate, today } from "@/lib/format";
 import { createExpenseSnapshot, serializeExpenseSnapshot } from "@/lib/history";
 import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
@@ -21,6 +23,7 @@ import { generateId } from "@/lib/utils";
 // ─── Groups ──────────────────────────────────────────────────────────────────
 
 export async function createGroup(formData: FormData) {
+  const user = await requireUser();
   const name = (formData.get("name") as string).trim();
   const memberNames = (formData.getAll("members") as string[])
     .map((n) => n.trim())
@@ -29,7 +32,13 @@ export async function createGroup(formData: FormData) {
   if (!name || memberNames.length < 2) return;
 
   const groupId = generateId();
-  await db.insert(groups).values({ id: groupId, name });
+  await db.insert(groups).values({ id: groupId, name, createdByUserId: user.id });
+  await db.insert(groupAccess).values({
+    id: generateId(),
+    groupId,
+    userId: user.id,
+    role: "owner",
+  });
   await db.insert(members).values(
     memberNames.map((n) => ({ id: generateId(), groupId, name: n }))
   );
@@ -38,6 +47,7 @@ export async function createGroup(formData: FormData) {
 }
 
 export async function deleteGroup(groupId: string) {
+  await requireGroupAccess(groupId);
   await db.delete(groups).where(eq(groups.id, groupId));
   revalidatePath("/");
   redirect("/");
@@ -46,6 +56,7 @@ export async function deleteGroup(groupId: string) {
 // ─── Members ─────────────────────────────────────────────────────────────────
 
 export async function addMember(groupId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const name = (formData.get("name") as string).trim();
   if (!name) return;
 
@@ -56,6 +67,7 @@ export async function addMember(groupId: string, formData: FormData) {
 // ─── Expenses ────────────────────────────────────────────────────────────────
 
 export async function createExpense(groupId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const description = (formData.get("description") as string).trim();
   const amount = parseFloat(formData.get("amount") as string);
   const paidById = formData.get("paidById") as string;
@@ -110,6 +122,7 @@ export async function createExpense(groupId: string, formData: FormData) {
 }
 
 export async function updateExpense(groupId: string, expenseId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const description = (formData.get("description") as string).trim();
   const amount = parseFloat(formData.get("amount") as string);
   const paidById = formData.get("paidById") as string;
@@ -196,6 +209,7 @@ export async function updateExpense(groupId: string, expenseId: string, formData
 }
 
 export async function deleteExpense(groupId: string, expenseId: string) {
+  await requireGroupAccess(groupId);
   await db.delete(expenses).where(eq(expenses.id, expenseId));
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
@@ -204,6 +218,7 @@ export async function deleteExpense(groupId: string, expenseId: string) {
 // ─── Settlements ─────────────────────────────────────────────────────────────
 
 export async function createSettlement(groupId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const paidById = formData.get("paidById") as string;
   const paidToId = formData.get("paidToId") as string;
   const amount = parseFloat(formData.get("amount") as string);
@@ -229,6 +244,7 @@ export async function createSettlement(groupId: string, formData: FormData) {
 }
 
 export async function reverseSettlement(groupId: string, settlementId: string) {
+  await requireGroupAccess(groupId);
   const original = await db.query.settlements.findFirst({
     where: and(
       eq(settlements.id, settlementId),
@@ -253,7 +269,6 @@ export async function reverseSettlement(groupId: string, settlementId: string) {
     reversalOfSettlementId: original.id,
     date: today(),
   });
-
   revalidatePath(`/groups/${groupId}/settle`);
   redirect(`/groups/${groupId}/settle`);
 }

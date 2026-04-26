@@ -1,13 +1,55 @@
 import { sql } from "drizzle-orm";
-import { foreignKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { foreignKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    emailUniqueIndex: uniqueIndex("users_email_unique").on(table.email),
+  })
+);
 
 export const groups = sqliteTable("groups", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  createdByUserId: text("created_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
 });
+
+export const groupAccess = sqliteTable(
+  "group_access",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["owner", "member"] }).notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    groupUserUniqueIndex: uniqueIndex("group_access_group_user_unique").on(
+      table.groupId,
+      table.userId
+    ),
+  })
+);
 
 export const members = sqliteTable("members", {
   id: text("id").primaryKey(),
