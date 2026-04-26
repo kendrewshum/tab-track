@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { createTestGroup } from "./helpers";
+import { createTestGroup, signUpAndLogin } from "./helpers";
 
 // Tests the full lifecycle of groups: creation, listing, member management,
 // navigation, and deletion. Each test creates its own group so tests are
@@ -7,6 +7,7 @@ import { createTestGroup } from "./helpers";
 
 test.describe("Group management", () => {
   test("user can create a group and land on the group page", async ({ page }) => {
+    await signUpAndLogin(page);
     await page.goto("/groups/new");
     await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Weekend Cabin");
     await page.getByPlaceholder("Member 1").fill("Alice");
@@ -52,6 +53,7 @@ test.describe("Group management", () => {
   });
 
   test("can create a group with more than two members", async ({ page }) => {
+    await signUpAndLogin(page);
     await page.goto("/groups/new");
     await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Big Group");
     await page.getByPlaceholder("Member 1").fill("Alice");

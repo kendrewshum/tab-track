@@ -45,14 +45,21 @@ test.describe("Settle up", () => {
     // Net: Alice +$5, Bob $0, Carol -$5 → simplified: Carol pays Alice $5 directly.
     const id = await createTestGroup(page, "E2E Simplify", ["Alice", "Bob", "Carol"]);
 
+    const participantToggle = (memberName: string) =>
+      page
+        .locator("div.border.rounded-xl")
+        .filter({ has: page.getByText(memberName, { exact: true }) })
+        .getByRole("button")
+        .first();
+
     await fillExpenseBase(page, id, { description: "E1", amount: "10", paidBy: "Alice" });
     // Exclude Carol from first expense (Alice and Bob only)
-    await page.locator("button.w-5.h-5.rounded").nth(2).click(); // uncheck Carol
+    await participantToggle("Carol").click();
     await page.getByRole("button", { name: "Add Expense" }).click();
 
     await fillExpenseBase(page, id, { description: "E2", amount: "10", paidBy: "Bob" });
     // Exclude Alice from second expense (Bob and Carol only)
-    await page.locator("button.w-5.h-5.rounded").nth(0).click(); // uncheck Alice
+    await participantToggle("Alice").click();
     await page.getByRole("button", { name: "Add Expense" }).click();
 
     await page.goto(`/groups/${id}/settle`);
@@ -83,7 +90,59 @@ test.describe("Settle up", () => {
     await expect(page.getByText("$15.00")).toBeVisible();
   });
 
-  test("can delete a settlement record", async ({ page }) => {
+  test("editing a settled expense reopens balances and shows a warning on settle up", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Reopen Debt", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Museum", amount: "10", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.goto(`/groups/${id}/settle`);
+    await page.getByRole("button", { name: "Mark as Settled" }).click();
+    await expect(page.getByText("All settled up!")).toBeVisible();
+
+    await page.goto(`/groups/${id}`);
+    await page.locator("a[title='Edit expense']").click();
+    await page.getByPlaceholder("0.00").first().fill("20");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    await expect(page.getByText("Bob owes Alice")).toBeVisible();
+
+    await page.goto(`/groups/${id}/settle`);
+    await expect(
+      page.getByText("Payments remain in your history, but edited expenses reopened the current ledger.")
+    ).toBeVisible();
+  });
+
+  test("editing a split after settlement adds an expense-edited activity entry", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Split Activity", ["Alice", "Bob", "Carol"]);
+    await fillExpenseBase(page, id, { description: "Boat", amount: "30", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Exact" }).click();
+    await page.locator("input[name^='exact_']").nth(0).fill("10");
+    await page.locator("input[name^='exact_']").nth(1).fill("10");
+    await page.locator("input[name^='exact_']").nth(2).fill("10");
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.goto(`/groups/${id}/settle`);
+    await page.getByRole("button", { name: "Mark as Settled" }).nth(0).click();
+    await page.getByRole("button", { name: "Mark as Settled" }).nth(0).click();
+    await expect(page.getByText("All settled up!")).toBeVisible();
+
+    await page.goto(`/groups/${id}`);
+    await page.locator("a[title='Edit expense']").click();
+    await page.locator("input[name^='exact_']").nth(0).fill("0");
+    await page.locator("input[name^='exact_']").nth(1).fill("15");
+    await page.locator("input[name^='exact_']").nth(2).fill("15");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+
+    const activitySection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Activity", exact: true }) });
+
+    await expect(activitySection.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
+    await expect(activitySection.getByText("Expense edited")).toBeVisible();
+    await expect(activitySection.getByText("Boat").first()).toBeVisible();
+  });
+
+  test("can reverse a settlement record without erasing the original payment", async ({ page }) => {
     const id = await createTestGroup(page, "E2E Delete Settlement", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Taxi", amount: "10", paidBy: "Alice" });
     await page.getByRole("button", { name: "Add Expense" }).click();
@@ -93,9 +152,11 @@ test.describe("Settle up", () => {
 
     // Accept the confirmation dialog that appears before deletion
     page.on("dialog", (dialog) => dialog.accept());
-    await page.locator("button[title='Delete record']").click();
+    await page.getByRole("button", { name: "Reverse payment" }).click();
 
-    // Debt should reappear now that settlement is removed
+    await expect(page.getByText("Payment recorded")).toBeVisible();
+    await expect(page.getByText("Payment reversed")).toBeVisible();
+    await expect(page.getByText("Reversal of payment")).toBeVisible();
     await expect(page.getByText("Mark as Settled")).toBeVisible();
   });
 });

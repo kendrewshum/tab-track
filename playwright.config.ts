@@ -40,6 +40,10 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
+      APP_INVITE_CODE: "test-invite-code",
+      AUTH_SECRET: "test-auth-secret-for-playwright",
+      LEGACY_GROUP_ACCESS_MAP:
+        '[{"groupName":"Austin 2026","ownerEmail":"owner@example.com","memberEmails":["friend@example.com"]}]',
       TURSO_DATABASE_URL: `file:${testDbPath}`,
     },
   },

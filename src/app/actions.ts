@@ -1,23 +1,29 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
 import {
+  expenseRevisions,
   expenseSplits,
   expenses,
+  groupAccess,
   groups,
   members,
   settlements,
 } from "@/db/schema";
+import { requireGroupAccess, requireUser } from "@/lib/server/session";
+import { formatDate, today } from "@/lib/format";
+import { createExpenseSnapshot, serializeExpenseSnapshot } from "@/lib/history";
 import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
 import { generateId } from "@/lib/utils";
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
 
 export async function createGroup(formData: FormData) {
+  const user = await requireUser();
   const name = (formData.get("name") as string).trim();
   const memberNames = (formData.getAll("members") as string[])
     .map((n) => n.trim())
@@ -26,7 +32,13 @@ export async function createGroup(formData: FormData) {
   if (!name || memberNames.length < 2) return;
 
   const groupId = generateId();
-  await db.insert(groups).values({ id: groupId, name });
+  await db.insert(groups).values({ id: groupId, name, createdByUserId: user.id });
+  await db.insert(groupAccess).values({
+    id: generateId(),
+    groupId,
+    userId: user.id,
+    role: "owner",
+  });
   await db.insert(members).values(
     memberNames.map((n) => ({ id: generateId(), groupId, name: n }))
   );
@@ -35,6 +47,7 @@ export async function createGroup(formData: FormData) {
 }
 
 export async function deleteGroup(groupId: string) {
+  await requireGroupAccess(groupId);
   await db.delete(groups).where(eq(groups.id, groupId));
   revalidatePath("/");
   redirect("/");
@@ -43,6 +56,7 @@ export async function deleteGroup(groupId: string) {
 // ─── Members ─────────────────────────────────────────────────────────────────
 
 export async function addMember(groupId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const name = (formData.get("name") as string).trim();
   if (!name) return;
 
@@ -53,6 +67,7 @@ export async function addMember(groupId: string, formData: FormData) {
 // ─── Expenses ────────────────────────────────────────────────────────────────
 
 export async function createExpense(groupId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const description = (formData.get("description") as string).trim();
   const amount = parseFloat(formData.get("amount") as string);
   const paidById = formData.get("paidById") as string;
@@ -107,6 +122,7 @@ export async function createExpense(groupId: string, formData: FormData) {
 }
 
 export async function updateExpense(groupId: string, expenseId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const description = (formData.get("description") as string).trim();
   const amount = parseFloat(formData.get("amount") as string);
   const paidById = formData.get("paidById") as string;
@@ -139,25 +155,61 @@ export async function updateExpense(groupId: string, expenseId: string, formData
   const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs, paidById);
   if (splits.length === 0) return;
 
-  await db.update(expenses).set({
-    description,
-    amount: Math.round(amount * 100) / 100,
-    paidById,
-    splitType,
-    date,
-  }).where(eq(expenses.id, expenseId));
+  const [existingExpense, existingSplits] = await Promise.all([
+    db.query.expenses.findFirst({
+      where: and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)),
+    }),
+    db.select().from(expenseSplits).where(eq(expenseSplits.expenseId, expenseId)),
+  ]);
+  if (!existingExpense) return;
 
-  await db.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
-
-  await db.insert(expenseSplits).values(
-    splits.map((s) => ({ id: generateId(), expenseId, ...s }))
+  const roundedAmount = Math.round(amount * 100) / 100;
+  const beforeSnapshot = serializeExpenseSnapshot(
+    createExpenseSnapshot(existingExpense, existingSplits)
   );
+  const afterSnapshot = serializeExpenseSnapshot(
+    createExpenseSnapshot(
+      {
+        description,
+        amount: roundedAmount,
+        paidById,
+        splitType,
+        date,
+      },
+      splits
+    )
+  );
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(expenses)
+      .set({
+        description,
+        amount: roundedAmount,
+        paidById,
+        splitType,
+        date,
+      })
+      .where(eq(expenses.id, expenseId));
+
+    await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
+
+    await tx.insert(expenseSplits).values(splits.map((s) => ({ id: generateId(), expenseId, ...s })));
+
+    await tx.insert(expenseRevisions).values({
+      id: generateId(),
+      expenseId,
+      beforeSnapshot,
+      afterSnapshot,
+    });
+  });
 
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
 }
 
 export async function deleteExpense(groupId: string, expenseId: string) {
+  await requireGroupAccess(groupId);
   await db.delete(expenses).where(eq(expenses.id, expenseId));
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
@@ -166,6 +218,7 @@ export async function deleteExpense(groupId: string, expenseId: string) {
 // ─── Settlements ─────────────────────────────────────────────────────────────
 
 export async function createSettlement(groupId: string, formData: FormData) {
+  await requireGroupAccess(groupId);
   const paidById = formData.get("paidById") as string;
   const paidToId = formData.get("paidToId") as string;
   const amount = parseFloat(formData.get("amount") as string);
@@ -182,6 +235,7 @@ export async function createSettlement(groupId: string, formData: FormData) {
     paidToId,
     amount: Math.round(amount * 100) / 100,
     note,
+    reversalOfSettlementId: null,
     date,
   });
 
@@ -189,8 +243,32 @@ export async function createSettlement(groupId: string, formData: FormData) {
   redirect(`/groups/${groupId}/settle`);
 }
 
-export async function deleteSettlement(groupId: string, settlementId: string) {
-  await db.delete(settlements).where(eq(settlements.id, settlementId));
+export async function reverseSettlement(groupId: string, settlementId: string) {
+  await requireGroupAccess(groupId);
+  const original = await db.query.settlements.findFirst({
+    where: and(
+      eq(settlements.id, settlementId),
+      eq(settlements.groupId, groupId),
+      isNull(settlements.reversalOfSettlementId)
+    ),
+  });
+  if (!original) return;
+
+  const existingReversal = await db.query.settlements.findFirst({
+    where: eq(settlements.reversalOfSettlementId, settlementId),
+  });
+  if (existingReversal) return;
+
+  await db.insert(settlements).values({
+    id: generateId(),
+    groupId,
+    paidById: original.paidToId,
+    paidToId: original.paidById,
+    amount: original.amount,
+    note: `Reversal of payment from ${formatDate(original.date)}`,
+    reversalOfSettlementId: original.id,
+    date: today(),
+  });
   revalidatePath(`/groups/${groupId}/settle`);
   redirect(`/groups/${groupId}/settle`);
 }
