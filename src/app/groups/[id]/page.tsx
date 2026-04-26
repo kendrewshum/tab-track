@@ -9,9 +9,11 @@ import { db } from "@/db";
 import { expenses, expenseSplits, groups, members, settlements } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { requireGroupAccess } from "@/lib/server/session";
 import { addMember, deleteExpense } from "@/app/actions";
 import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
+import { InviteUserForm } from "./invite-user-form";
 
 export default async function GroupPage({
   params,
@@ -19,6 +21,7 @@ export default async function GroupPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();
@@ -216,6 +219,16 @@ export default async function GroupPage({
               Add
             </button>
           </form>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <p className="text-sm text-slate-500 mb-3">
+            Share this group with friends who already created an account.
+          </p>
+          <InviteUserForm groupId={id} />
         </div>
       </section>
 

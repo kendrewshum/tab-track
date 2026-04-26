@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { expenses, expenseSplits, groups, members, settlements } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate, today } from "@/lib/format";
+import { requireGroupAccess } from "@/lib/server/session";
 import { createSettlement, deleteSettlement } from "@/app/actions";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 
@@ -17,6 +18,7 @@ export default async function SettlePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();

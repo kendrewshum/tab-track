@@ -5,10 +5,13 @@ export const dynamic = "force-dynamic";
 import { sql, eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { groups, members } from "@/db/schema";
+import { groupAccess, groups, members } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { requireUser } from "@/lib/server/session";
 
 export default async function HomePage() {
+  const user = await requireUser();
+
   const allGroups = await db
     .select({
       id: groups.id,
@@ -16,8 +19,10 @@ export default async function HomePage() {
       createdAt: groups.createdAt,
       memberCount: sql<number>`count(distinct ${members.id})`,
     })
-    .from(groups)
+    .from(groupAccess)
+    .innerJoin(groups, eq(groupAccess.groupId, groups.id))
     .leftJoin(members, eq(members.groupId, groups.id))
+    .where(eq(groupAccess.userId, user.id))
     .groupBy(groups.id)
     .orderBy(sql`${groups.createdAt} desc`);
 
