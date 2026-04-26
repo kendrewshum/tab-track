@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { createGroup } from "@/app/actions";
@@ -16,9 +17,9 @@ export default function NewGroupPage() {
   return (
     <div className="space-y-6">
       <div>
-        <a href="/" className="text-sm text-green-600 hover:text-green-700">
+        <Link href="/" className="text-sm text-green-600 hover:text-green-700">
           ← Groups
-        </a>
+        </Link>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">New Group</h1>
         <p className="text-slate-500 text-sm mt-0.5">
           Add at least 2 members to get started
