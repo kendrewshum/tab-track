@@ -1,17 +1,20 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { db } from "@/db";
 import {
+  expenseRevisions,
   expenseSplits,
   expenses,
   groups,
   members,
   settlements,
 } from "@/db/schema";
+import { formatDate, today } from "@/lib/format";
+import { createExpenseSnapshot, serializeExpenseSnapshot } from "@/lib/history";
 import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
 import { generateId } from "@/lib/utils";
 
@@ -139,19 +142,54 @@ export async function updateExpense(groupId: string, expenseId: string, formData
   const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs, paidById);
   if (splits.length === 0) return;
 
-  await db.update(expenses).set({
-    description,
-    amount: Math.round(amount * 100) / 100,
-    paidById,
-    splitType,
-    date,
-  }).where(eq(expenses.id, expenseId));
+  const [existingExpense, existingSplits] = await Promise.all([
+    db.query.expenses.findFirst({
+      where: and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)),
+    }),
+    db.select().from(expenseSplits).where(eq(expenseSplits.expenseId, expenseId)),
+  ]);
+  if (!existingExpense) return;
 
-  await db.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
-
-  await db.insert(expenseSplits).values(
-    splits.map((s) => ({ id: generateId(), expenseId, ...s }))
+  const roundedAmount = Math.round(amount * 100) / 100;
+  const beforeSnapshot = serializeExpenseSnapshot(
+    createExpenseSnapshot(existingExpense, existingSplits)
   );
+  const afterSnapshot = serializeExpenseSnapshot(
+    createExpenseSnapshot(
+      {
+        description,
+        amount: roundedAmount,
+        paidById,
+        splitType,
+        date,
+      },
+      splits
+    )
+  );
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(expenses)
+      .set({
+        description,
+        amount: roundedAmount,
+        paidById,
+        splitType,
+        date,
+      })
+      .where(eq(expenses.id, expenseId));
+
+    await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
+
+    await tx.insert(expenseSplits).values(splits.map((s) => ({ id: generateId(), expenseId, ...s })));
+
+    await tx.insert(expenseRevisions).values({
+      id: generateId(),
+      expenseId,
+      beforeSnapshot,
+      afterSnapshot,
+    });
+  });
 
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
@@ -182,6 +220,7 @@ export async function createSettlement(groupId: string, formData: FormData) {
     paidToId,
     amount: Math.round(amount * 100) / 100,
     note,
+    reversalOfSettlementId: null,
     date,
   });
 
@@ -189,8 +228,32 @@ export async function createSettlement(groupId: string, formData: FormData) {
   redirect(`/groups/${groupId}/settle`);
 }
 
-export async function deleteSettlement(groupId: string, settlementId: string) {
-  await db.delete(settlements).where(eq(settlements.id, settlementId));
+export async function reverseSettlement(groupId: string, settlementId: string) {
+  const original = await db.query.settlements.findFirst({
+    where: and(
+      eq(settlements.id, settlementId),
+      eq(settlements.groupId, groupId),
+      isNull(settlements.reversalOfSettlementId)
+    ),
+  });
+  if (!original) return;
+
+  const existingReversal = await db.query.settlements.findFirst({
+    where: eq(settlements.reversalOfSettlementId, settlementId),
+  });
+  if (existingReversal) return;
+
+  await db.insert(settlements).values({
+    id: generateId(),
+    groupId,
+    paidById: original.paidToId,
+    paidToId: original.paidById,
+    amount: original.amount,
+    note: `Reversal of payment from ${formatDate(original.date)}`,
+    reversalOfSettlementId: original.id,
+    date: today(),
+  });
+
   revalidatePath(`/groups/${groupId}/settle`);
   redirect(`/groups/${groupId}/settle`);
 }

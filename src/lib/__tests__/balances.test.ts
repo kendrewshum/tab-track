@@ -98,6 +98,31 @@ describe("calculateBalances", () => {
     expect(netOf(balances, "bob")).toBe(2);
   });
 
+  it("editing an already-settled expense can reopen balances while keeping the old settlement", () => {
+    const balances = calculateBalances(
+      [m("alice"), m("bob")],
+      [exp("alice", 20, [["alice", 10], ["bob", 10]])],
+      [settle("bob", "alice", 5)]
+    );
+
+    expect(netOf(balances, "alice")).toBe(5);
+    expect(netOf(balances, "bob")).toBe(-5);
+  });
+
+  it("a reversal settlement cancels the original payment without deleting ledger history", () => {
+    const balances = calculateBalances(
+      [m("alice"), m("bob")],
+      [exp("alice", 10, [["alice", 5], ["bob", 5]])],
+      [
+        settle("bob", "alice", 5),
+        settle("alice", "bob", 5),
+      ]
+    );
+
+    expect(netOf(balances, "alice")).toBe(5);
+    expect(netOf(balances, "bob")).toBe(-5);
+  });
+
   it("all net balances sum to zero (conservation of money)", () => {
     // Money doesn't appear or disappear — every credit has a matching debit.
     const balances = calculateBalances(

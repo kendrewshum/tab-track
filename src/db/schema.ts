@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { foreignKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const groups = sqliteTable("groups", {
   id: text("id").primaryKey(),
@@ -50,21 +50,43 @@ export const expenseSplits = sqliteTable("expense_splits", {
   amount: real("amount").notNull(),
 });
 
-export const settlements = sqliteTable("settlements", {
+export const expenseRevisions = sqliteTable("expense_revisions", {
   id: text("id").primaryKey(),
-  groupId: text("group_id")
+  expenseId: text("expense_id")
     .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  paidById: text("paid_by_id")
-    .notNull()
-    .references(() => members.id),
-  paidToId: text("paid_to_id")
-    .notNull()
-    .references(() => members.id),
-  amount: real("amount").notNull(),
-  note: text("note"),
-  date: text("date").notNull(),
+    .references(() => expenses.id, { onDelete: "cascade" }),
+  beforeSnapshot: text("before_snapshot").notNull(),
+  afterSnapshot: text("after_snapshot").notNull(),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
 });
+
+export const settlements = sqliteTable(
+  "settlements",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    paidById: text("paid_by_id")
+      .notNull()
+      .references(() => members.id),
+    paidToId: text("paid_to_id")
+      .notNull()
+      .references(() => members.id),
+    amount: real("amount").notNull(),
+    note: text("note"),
+    reversalOfSettlementId: text("reversal_of_settlement_id"),
+    date: text("date").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.reversalOfSettlementId],
+      foreignColumns: [table.id],
+    }),
+  ]
+);
