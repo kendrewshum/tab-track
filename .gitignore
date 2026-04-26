@@ -15,8 +15,6 @@ local.db
 local.db-shm
 local.db-wal
 
-# drizzle migrations (optional to commit)
-drizzle/
 
 # playwright
 playwright-report/
@@ -28,3 +26,4 @@ e2e-test.db-wal
 # misc
 .DS_Store
 *.pem
+*.tsbuildinfo

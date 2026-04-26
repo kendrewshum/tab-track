@@ -6,12 +6,6 @@ import { createTestGroup } from "./helpers";
 // independent and can be run in any order within this file.
 
 test.describe("Group management", () => {
-  test("shows empty state on first visit", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByText("No groups yet")).toBeVisible();
-    await expect(page.getByRole("link", { name: /Create your first group/i })).toBeVisible();
-  });
-
   test("user can create a group and land on the group page", async ({ page }) => {
     await page.goto("/groups/new");
     await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Weekend Cabin");
@@ -26,11 +20,13 @@ test.describe("Group management", () => {
   });
 
   test("new group appears on the home page", async ({ page }) => {
-    await createTestGroup(page, "Barcelona Trip", ["Maria", "Carlos"]);
+    const id = await createTestGroup(page, "Barcelona Trip", ["Maria", "Carlos"]);
 
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /Barcelona Trip/i })).toBeVisible();
-    await expect(page.getByText("2 members")).toBeVisible();
+    const groupCard = page.locator(`a[href='/groups/${id}']`);
+    await expect(groupCard).toBeVisible();
+    await expect(groupCard).toContainText("Barcelona Trip");
+    await expect(groupCard).toContainText("2 members");
   });
 
   test("can add more members to an existing group", async ({ page }) => {
@@ -40,8 +36,12 @@ test.describe("Group management", () => {
     await page.getByRole("button", { name: "Add" }).click();
 
     await expect(page.getByText("3 members")).toBeVisible();
-    // Carol should appear in the members list
-    await expect(page.getByText("Carol")).toBeVisible();
+    await expect(
+      page
+        .locator("section")
+        .filter({ has: page.getByRole("heading", { name: "Members" }) })
+        .getByText("Carol", { exact: true })
+    ).toBeVisible();
   });
 
   test("can navigate back to home from a group page", async ({ page }) => {

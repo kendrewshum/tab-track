@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import path from "path";
+
+const testDbPath = path.resolve(__dirname, "e2e-test.db");
 
 // E2E tests run against a dedicated SQLite file that is wiped and recreated
-// before every test run (see e2e/global-setup.ts). Tests run sequentially
+// before every test run (see e2e/setup-db.mjs). Tests run sequentially
 // (workers: 1) because SQLite cannot safely handle concurrent writes.
 
 export default defineConfig({
@@ -11,7 +14,6 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["html", { open: "never" }], ["line"]],
-  globalSetup: "./e2e/global-setup.ts",
 
   use: {
     baseURL: "http://localhost:3001",
@@ -30,14 +32,15 @@ export default defineConfig({
   ],
 
   webServer: {
-    // Start Next.js on port 3001 so it doesn't conflict with the dev server.
-    // TURSO_DATABASE_URL points at the dedicated test DB created by global-setup.
-    command: "npm run dev -- -p 3001",
-    url: "http://localhost:3001",
+    // setup-db.mjs wipes and recreates the test DB, then the dev server
+    // starts. Running setup first guarantees the DB schema exists before
+    // @libsql/client initialises its connection on the first request.
+    command: "node e2e/setup-db.mjs && npm run start -- -p 3001",
+    url: "http://localhost:3001/api/health",
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 120_000,
     env: {
-      TURSO_DATABASE_URL: "file:e2e-test.db",
+      TURSO_DATABASE_URL: `file:${testDbPath}`,
     },
   },
 });

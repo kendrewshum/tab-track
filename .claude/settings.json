@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/test-check.sh",
+            "asyncRewake": true,
+            "statusMessage": "Checking test coverage..."
+          }
+        ]
+      }
+    ]
+  }
+}

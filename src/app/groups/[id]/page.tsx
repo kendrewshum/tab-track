@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
-import { Plus, ArrowRight } from "lucide-react";
+import { Plus, ArrowRight, Pencil } from "lucide-react";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -11,6 +11,7 @@ import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { addMember, deleteExpense } from "@/app/actions";
 import { DeleteGroupButton } from "./delete-group-button";
+import { ConfirmDeleteButton } from "./confirm-delete-button";
 
 export default async function GroupPage({
   params,
@@ -170,15 +171,21 @@ export default async function GroupPage({
                     <span className="font-semibold text-slate-900">
                       {formatCurrency(expense.amount)}
                     </span>
-                    <form action={deleteExpense.bind(null, id, expense.id)}>
-                      <button
-                        type="submit"
-                        className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none"
-                        title="Delete expense"
-                      >
-                        ×
-                      </button>
-                    </form>
+                    <Link
+                      href={`/groups/${id}/expenses/${expense.id}/edit`}
+                      className="text-slate-300 hover:text-slate-500 transition-colors"
+                      title="Edit expense"
+                    >
+                      <Pencil size={14} />
+                    </Link>
+                    <ConfirmDeleteButton
+                      action={deleteExpense.bind(null, id, expense.id)}
+                      message="Delete this expense? This cannot be undone."
+                      className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none"
+                      title="Delete expense"
+                    >
+                      ×
+                    </ConfirmDeleteButton>
                   </div>
                 </div>
               </div>

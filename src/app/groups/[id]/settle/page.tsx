@@ -9,6 +9,7 @@ import { expenses, expenseSplits, groups, members, settlements } from "@/db/sche
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate, today } from "@/lib/format";
 import { createSettlement, deleteSettlement } from "@/app/actions";
+import { ConfirmDeleteButton } from "../confirm-delete-button";
 
 export default async function SettlePage({
   params,
@@ -192,15 +193,14 @@ export default async function SettlePage({
                     {s.note ? ` · ${s.note}` : ""}
                   </p>
                 </div>
-                <form action={deleteSettlement.bind(null, id, s.id)}>
-                  <button
-                    type="submit"
-                    className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none"
-                    title="Delete record"
-                  >
-                    ×
-                  </button>
-                </form>
+                <ConfirmDeleteButton
+                  action={deleteSettlement.bind(null, id, s.id)}
+                  message="Delete this payment record? This cannot be undone."
+                  className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none"
+                  title="Delete record"
+                >
+                  ×
+                </ConfirmDeleteButton>
               </div>
             ))}
           </div>
