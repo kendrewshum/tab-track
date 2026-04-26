@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 type TabTrackLogoProps = {
   className?: string;
   decorative?: boolean;
@@ -8,7 +10,7 @@ export function TabTrackLogo({
   decorative = false,
 }: TabTrackLogoProps) {
   return (
-    <img
+    <Image
       src="/tabtrack-mark.svg"
       alt={decorative ? "" : "TabTrack logo"}
       aria-hidden={decorative ? true : undefined}
@@ -16,6 +18,7 @@ export function TabTrackLogo({
       className={className}
       width={28}
       height={28}
+      priority
     />
   );
 }
