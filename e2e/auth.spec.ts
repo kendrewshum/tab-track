@@ -33,7 +33,12 @@ test.describe("Authentication and legacy group access", () => {
     await page.getByRole("link", { name: /Austin 2026/i }).click();
 
     await expect(page.getByRole("heading", { name: "Austin 2026" })).toBeVisible();
-    await expect(page.getByText("Flights")).toBeVisible();
+    await expect(
+      page
+        .locator("section")
+        .filter({ has: page.getByRole("heading", { name: "Expenses" }) })
+        .getByText("Flights", { exact: true })
+    ).toBeVisible();
   });
 
   test("an unmapped user does not see the legacy Austin 2026 group", async ({ page }) => {
@@ -57,17 +62,19 @@ test.describe("Authentication and legacy group access", () => {
       displayName: "Share Owner",
       email: "share-owner@example.com",
     });
-    const guest = await signUpAndLogin(guestPage, {
-      displayName: "Share Guest",
-      email: "share-guest@example.com",
-    });
 
     await ownerPage.goto("/groups/new");
+    await expect(ownerPage.getByRole("heading", { name: "New Group" })).toBeVisible();
     await ownerPage.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Shared Weekend");
     await ownerPage.getByPlaceholder("Member 1").fill("Owner");
     await ownerPage.getByPlaceholder("Member 2").fill("Guest");
     await ownerPage.getByRole("button", { name: "Create Group" }).click();
     await expect(ownerPage).toHaveURL(/\/groups\/[^/]+$/);
+
+    const guest = await signUpAndLogin(guestPage, {
+      displayName: "Share Guest",
+      email: "share-guest@example.com",
+    });
 
     await ownerPage.getByPlaceholder("friend@example.com").fill(guest.email);
     await ownerPage.getByRole("button", { name: "Share Group" }).click();

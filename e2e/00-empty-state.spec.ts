@@ -3,6 +3,9 @@ import { signUpAndLogin } from "./helpers";
 
 // Must run before any other spec creates groups in the DB.
 // Named 00-* so it sorts before expenses.spec.ts alphabetically.
+
+test.skip(({ isMobile }) => isMobile, "Desktop run already verifies the clean shared DB state.");
+
 test("shows empty state on first visit", async ({ page }) => {
   await signUpAndLogin(page);
 

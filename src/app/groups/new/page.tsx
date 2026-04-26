@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireUser } from "@/lib/server/session";
 import { NewGroupForm } from "./new-group-form";
 
+export const dynamic = "force-dynamic";
+
 export default async function NewGroupPage() {
   await requireUser();
 

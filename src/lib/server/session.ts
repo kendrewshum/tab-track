@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { isAuthSecretConfigured } from "@/lib/auth-config";
 import { findAuthorizedGroupAccess } from "@/lib/group-access";
+import { findUserByEmail } from "@/lib/server/users";
 
 export type SessionUser = {
   id: string;
@@ -17,17 +18,29 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   }
 
   const session = await auth();
-  const userId = session?.user?.id;
-  const email = session?.user?.email;
+  const email = session?.user?.email?.trim().toLowerCase();
 
-  if (!userId || !email) {
+  if (!email) {
     return null;
+  }
+
+  let userId = session?.user?.id?.trim() ?? "";
+  let displayName = session?.user?.name ?? null;
+
+  if (!userId) {
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return null;
+    }
+
+    userId = user.id;
+    displayName = displayName ?? user.displayName;
   }
 
   return {
     id: userId,
     email,
-    displayName: session.user.name ?? null,
+    displayName,
   };
 }
 
