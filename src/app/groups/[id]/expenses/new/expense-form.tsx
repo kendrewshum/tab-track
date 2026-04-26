@@ -29,6 +29,7 @@ export function ExpenseForm({
 }) {
   const editing = !!expense;
   const total = expense?.amount ?? 0;
+  const paidByFieldId = "paid-by";
 
   const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
   const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));
@@ -154,8 +155,11 @@ export function ExpenseForm({
 
       {/* Paid by */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Paid by</label>
+        <label htmlFor={paidByFieldId} className="block text-sm font-medium text-slate-700 mb-1.5">
+          Paid by
+        </label>
         <select
+          id={paidByFieldId}
           name="paidById"
           required
           value={paidById}

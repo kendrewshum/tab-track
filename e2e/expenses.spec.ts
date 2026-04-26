@@ -36,9 +36,13 @@ test.describe("Adding expenses – equal split", () => {
     await fillExpenseBase(page, id, { description: "Hotel", amount: "120", paidBy: "Alice" });
     await page.getByRole("button", { name: "Add Expense" }).click();
 
-    await expect(page.getByText("Hotel")).toBeVisible();
-    await expect(page.getByText("$120.00")).toBeVisible();
-    await expect(page.getByText(/Paid by Alice/)).toBeVisible();
+    const expensesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Expenses" }) });
+
+    await expect(expensesSection.getByText("Hotel")).toBeVisible();
+    await expect(expensesSection.getByText("$120.00", { exact: true })).toBeVisible();
+    await expect(expensesSection.getByText(/Paid by Alice/)).toBeVisible();
   });
 
   test("can delete an expense and balances reset to zero", async ({ page }) => {
@@ -132,8 +136,12 @@ test.describe("Editing expenses", () => {
     await page.getByRole("button", { name: "Save Changes" }).click();
 
     await expect(page).toHaveURL(`/groups/${id}`);
-    await expect(page.getByText("Updated Dinner")).toBeVisible();
-    await expect(page.getByText("$30.00")).toBeVisible();
+    const expensesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Expenses" }) });
+
+    await expect(expensesSection.getByText("Updated Dinner")).toBeVisible();
+    await expect(expensesSection.getByText("$30.00", { exact: true })).toBeVisible();
   });
 
   test("editing amount recalculates balances", async ({ page }) => {

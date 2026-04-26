@@ -14,10 +14,13 @@ test.describe("Settle up", () => {
     await page.getByRole("link", { name: /Settle up/i }).click();
     await expect(page).toHaveURL(`/groups/${id}/settle`);
 
-    // Suggested payment: Bob pays Alice $5
-    await expect(page.getByText("Bob")).toBeVisible();
-    await expect(page.getByText("Alice")).toBeVisible();
-    await expect(page.getByText("$5.00")).toBeVisible();
+    const suggestedPayments = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Suggested Payments" }) });
+
+    await expect(suggestedPayments.getByText("Bob", { exact: true })).toBeVisible();
+    await expect(suggestedPayments.getByText("Alice", { exact: true })).toBeVisible();
+    await expect(suggestedPayments.getByText("$5.00", { exact: true })).toBeVisible();
   });
 
   test("marking a debt as settled zeros out all balances", async ({ page }) => {
@@ -53,9 +56,13 @@ test.describe("Settle up", () => {
     await page.getByRole("button", { name: "Add Expense" }).click();
 
     await page.goto(`/groups/${id}/settle`);
-    // Should show exactly one suggested payment: Carol → Alice $5
-    await expect(page.getByText("Carol")).toBeVisible();
-    await expect(page.getByText("$5.00")).toBeVisible();
+    const suggestedPayments = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Suggested Payments" }) });
+
+    await expect(suggestedPayments.getByText("Carol", { exact: true })).toBeVisible();
+    await expect(suggestedPayments.getByText("Alice", { exact: true })).toBeVisible();
+    await expect(suggestedPayments.getByText("$5.00", { exact: true })).toBeVisible();
   });
 
   test("manual payment is recorded and appears in history", async ({ page }) => {
