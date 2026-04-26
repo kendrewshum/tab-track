@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { signIn, signOut } from "@/auth";
 import { db } from "@/db";
 import { groupAccess } from "@/db/schema";
+import { getAuthConfigError, isAuthSecretConfigured } from "@/lib/auth-config";
 import { hashPassword } from "@/lib/password";
 import { requireGroupAccess } from "@/lib/server/session";
 import { createUser, findUserByEmail } from "@/lib/server/users";
@@ -25,6 +26,10 @@ export async function loginAction(
   _previousState: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  if (!isAuthSecretConfigured({ AUTH_SECRET: process.env.AUTH_SECRET })) {
+    return { error: "Authentication is not configured yet. Add AUTH_SECRET in Vercel." };
+  }
+
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
@@ -53,6 +58,14 @@ export async function signupAction(
   _previousState: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
+  const configError = getAuthConfigError({
+    AUTH_SECRET: process.env.AUTH_SECRET,
+    APP_INVITE_CODE: process.env.APP_INVITE_CODE,
+  });
+  if (configError) {
+    return { error: configError };
+  }
+
   const result = validateSignupInput(
     {
       email: String(formData.get("email") ?? ""),

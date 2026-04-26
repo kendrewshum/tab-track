@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { db } from "@/db";
+import { isAuthSecretConfigured } from "@/lib/auth-config";
 import { findAuthorizedGroupAccess } from "@/lib/group-access";
 
 export type SessionUser = {
@@ -11,6 +12,10 @@ export type SessionUser = {
 };
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
+  if (!isAuthSecretConfigured({ AUTH_SECRET: process.env.AUTH_SECRET })) {
+    return null;
+  }
+
   const session = await auth();
   const userId = session?.user?.id;
   const email = session?.user?.email;

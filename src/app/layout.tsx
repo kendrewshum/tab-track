@@ -30,9 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <head>
-        <link rel="apple-touch-icon" href="/icon-192.png" />
-      </head>
+      <head />
       <body className={inter.className}>
         <div className="min-h-screen bg-slate-50">
           <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
