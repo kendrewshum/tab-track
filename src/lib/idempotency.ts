@@ -20,8 +20,9 @@ export function buildCreateRedirectPath(
   switch (actionKind) {
     case "createGroup":
     case "createExpense":
-    case "createSettlement":
     case "addMember":
       return `/groups/${ids.groupId}`;
+    case "createSettlement":
+      return `/groups/${ids.groupId}/settle`;
   }
 }

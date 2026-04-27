@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { foreignKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { CREATE_ACTION_KINDS } from "@/lib/idempotency";
 
 export const users = sqliteTable(
   "users",
@@ -141,7 +142,7 @@ export const idempotentSubmissions = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     actionKind: text("action_kind", {
-      enum: ["createGroup", "createExpense", "createSettlement", "addMember"],
+      enum: CREATE_ACTION_KINDS,
     }).notNull(),
     submissionToken: text("submission_token").notNull(),
     redirectPath: text("redirect_path").notNull(),

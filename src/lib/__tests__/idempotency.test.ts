@@ -31,6 +31,18 @@ describe("buildCreateRedirectPath", () => {
       "/groups/group-1"
     );
   });
+
+  it("builds the redirect path for a created settlement", () => {
+    expect(buildCreateRedirectPath("createSettlement", { groupId: "group-1" })).toBe(
+      "/groups/group-1/settle"
+    );
+  });
+
+  it("keeps add-member redirects on the group page", () => {
+    expect(buildCreateRedirectPath("addMember", { groupId: "group-1" })).toBe(
+      "/groups/group-1"
+    );
+  });
 });
 
 describe("CREATE_ACTION_KINDS", () => {
