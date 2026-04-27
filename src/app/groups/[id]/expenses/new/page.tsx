@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { groups, members } from "@/db/schema";
 import { requireGroupAccess } from "@/lib/server/session";
+import { generateId } from "@/lib/utils";
 import { ExpenseForm } from "./expense-form";
 
 export default async function NewExpensePage({
@@ -21,6 +22,7 @@ export default async function NewExpensePage({
 
   const groupMembers = await db.select().from(members).where(eq(members.groupId, id));
   if (groupMembers.length === 0) notFound();
+  const submissionToken = generateId();
 
   return (
     <div className="space-y-6">
@@ -30,7 +32,11 @@ export default async function NewExpensePage({
         </a>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">Add Expense</h1>
       </div>
-      <ExpenseForm groupId={id} members={groupMembers} />
+      <ExpenseForm
+        groupId={id}
+        members={groupMembers}
+        submissionToken={submissionToken}
+      />
     </div>
   );
 }

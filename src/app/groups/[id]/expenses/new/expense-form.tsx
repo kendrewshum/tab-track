@@ -22,15 +22,16 @@ export function ExpenseForm({
   groupId,
   members,
   expense,
+  submissionToken,
 }: {
   groupId: string;
   members: Member[];
   expense?: ExistingExpense;
+  submissionToken?: string;
 }) {
   const editing = !!expense;
   const total = expense?.amount ?? 0;
   const paidByFieldId = "paid-by";
-  const [submissionToken] = useState(() => crypto.randomUUID());
 
   const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
   const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));
@@ -114,7 +115,9 @@ export function ExpenseForm({
 
   return (
     <form action={action} className="space-y-5">
-      {!editing && <input type="hidden" name="_submissionToken" value={submissionToken} />}
+      {!editing && submissionToken && (
+        <input type="hidden" name="_submissionToken" value={submissionToken} />
+      )}
       {/* Description */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>

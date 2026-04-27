@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/server/session";
+import { generateId } from "@/lib/utils";
 import { NewGroupForm } from "./new-group-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewGroupPage() {
   await requireUser();
+  const submissionToken = generateId();
 
   return (
     <div className="space-y-6">
@@ -18,7 +20,7 @@ export default async function NewGroupPage() {
           Add at least 2 members to get started
         </p>
       </div>
-      <NewGroupForm />
+      <NewGroupForm submissionToken={submissionToken} />
     </div>
   );
 }

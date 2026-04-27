@@ -35,6 +35,27 @@ test.describe("Adding expenses – equal split", () => {
     ).toHaveCount(1);
   });
 
+  test("legitimate second expense create after revisiting the form is not replayed", async ({
+    page,
+  }) => {
+    const id = await createTestGroup(page, "Fresh Tokens", ["Alice", "Bob"]);
+
+    await fillExpenseBase(page, id, { description: "Dinner", amount: "10", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
+
+    await fillExpenseBase(page, id, { description: "Lunch", amount: "12", paidBy: "Bob" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
+
+    const expensesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Expenses" }) });
+
+    await expect(expensesSection.getByText("Dinner", { exact: true })).toHaveCount(1);
+    await expect(expensesSection.getByText("Lunch", { exact: true })).toHaveCount(1);
+  });
+
   test("payer gets the higher cent when $10 splits 3 ways ($3.34 not $3.33)", async ({ page }) => {
     // Rounding rule: Alice paid → Alice owes $3.34, others $3.33 each.
     const id = await createTestGroup(page, "E2E Equal 3", ["Alice", "Bob", "Carol"]);

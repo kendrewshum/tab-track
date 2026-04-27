@@ -37,6 +37,30 @@ test.describe("Group management", () => {
     await expect(page.locator("a").filter({ hasText: "One Cabin" })).toHaveCount(1);
   });
 
+  test("legitimate second group create after revisiting the form is not replayed", async ({
+    page,
+  }) => {
+    await signUpAndLogin(page);
+
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("First Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Second Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+
+    await page.goto("/");
+    await expect(page.locator("a").filter({ hasText: "First Cabin" })).toHaveCount(1);
+    await expect(page.locator("a").filter({ hasText: "Second Cabin" })).toHaveCount(1);
+  });
+
   test("new group appears on the home page", async ({ page }) => {
     const id = await createTestGroup(page, "Barcelona Trip", ["Maria", "Carlos"]);
 

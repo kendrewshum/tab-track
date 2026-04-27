@@ -5,9 +5,8 @@ import { Plus, X } from "lucide-react";
 
 import { createGroup } from "@/app/actions";
 
-export function NewGroupForm() {
+export function NewGroupForm({ submissionToken }: { submissionToken: string }) {
   const [memberInputs, setMemberInputs] = useState(["", ""]);
-  const [submissionToken] = useState(() => crypto.randomUUID());
 
   const addMember = () => setMemberInputs((p) => [...p, ""]);
   const removeMember = (i: number) =>
