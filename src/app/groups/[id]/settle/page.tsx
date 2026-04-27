@@ -12,6 +12,7 @@ import { requireGroupAccess } from "@/lib/server/session";
 import { hasExpenseEditsAfterSettlementStarted } from "@/lib/history";
 import { generateId } from "@/lib/utils";
 import { createSettlement, reverseSettlement } from "@/app/actions";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 
 type MemberRow = typeof members.$inferSelect;
@@ -136,12 +137,12 @@ export default async function SettlePage({
                   <input type="hidden" name="paidToId" value={debt.toId} />
                   <input type="hidden" name="amount" value={debt.amount} />
                   <input type="hidden" name="date" value={today()} />
-                  <button
-                    type="submit"
+                  <PendingSubmitButton
+                    pendingLabel="Recording..."
                     className="w-full py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
                   >
                     Mark as Settled
-                  </button>
+                  </PendingSubmitButton>
                 </form>
               </div>
             ))}
@@ -223,12 +224,12 @@ export default async function SettlePage({
               className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
-          <button
-            type="submit"
+          <PendingSubmitButton
+            pendingLabel="Recording..."
             className="w-full py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
           >
             Record Payment
-          </button>
+          </PendingSubmitButton>
         </form>
       </section>
 
@@ -272,7 +273,8 @@ export default async function SettlePage({
                   <ConfirmDeleteButton
                     action={reverseSettlement.bind(null, id, s.id)}
                     message="Record a reversing payment for this entry?"
-                    className="text-sm text-amber-700 hover:text-amber-800 font-medium transition-colors"
+                    pendingLabel="Reversing..."
+                    className="text-sm text-amber-700 hover:text-amber-800 font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                     title="Reverse payment"
                   >
                     Reverse payment

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createExpense, updateExpense } from "@/app/actions";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
 
@@ -358,13 +359,13 @@ export function ExpenseForm({
         </div>
       )}
 
-      <button
-        type="submit"
+      <PendingSubmitButton
         disabled={!isValid}
+        pendingLabel={editing ? "Saving..." : "Adding..."}
         className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {editing ? "Save Changes" : "Add Expense"}
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }

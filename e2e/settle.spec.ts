@@ -90,6 +90,24 @@ test.describe("Settle up", () => {
     await expect(page.getByText("$15.00")).toBeVisible();
   });
 
+  test("double-clicking Record Payment only records one payment", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E History Double Submit", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Lunch", amount: "30", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.goto(`/groups/${id}/settle`);
+
+    await page.locator("select[name='paidById']").last().selectOption({ label: "Bob" });
+    await page.locator("select[name='paidToId']").last().selectOption({ label: "Alice" });
+    await page.locator("input[name='amount']").last().fill("15");
+    await page.locator("input[name='note']").fill("Venmo");
+    await page.getByRole("button", { name: "Record Payment" }).dblclick();
+
+    await expect(page.getByText("Venmo")).toHaveCount(1);
+    await expect(page.getByText("$15.00")).toHaveCount(1);
+    await expect(page.getByText("Payment recorded")).toHaveCount(1);
+  });
+
   test("editing a settled expense reopens balances and shows a warning on settle up", async ({ page }) => {
     const id = await createTestGroup(page, "E2E Reopen Debt", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Museum", amount: "10", paidBy: "Alice" });

@@ -117,6 +117,21 @@ test.describe("Group management", () => {
     ).toBeVisible();
   });
 
+  test("double-clicking Add only adds one member", async ({ page }) => {
+    await createTestGroup(page, "Dinner Club Double Add", ["Alice", "Bob"]);
+
+    await page.getByPlaceholder("Add a member…").fill("Carol");
+    await page.getByRole("button", { name: "Add" }).dblclick();
+
+    await expect(page.getByText("3 members")).toBeVisible();
+    await expect(
+      page
+        .locator("section")
+        .filter({ has: page.getByRole("heading", { name: "Members" }) })
+        .getByText("Carol", { exact: true })
+    ).toHaveCount(1);
+  });
+
   test("can navigate back to home from a group page", async ({ page }) => {
     await createTestGroup(page, "Road Trip", ["Alice", "Bob"]);
 

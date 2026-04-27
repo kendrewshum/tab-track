@@ -13,6 +13,7 @@ import { requireGroupAccess } from "@/lib/server/session";
 import { buildActivityEvents, getPostSettlementEditedExpenseIds } from "@/lib/history";
 import { addMember, deleteExpense } from "@/app/actions";
 import { generateId } from "@/lib/utils";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
 import { InviteUserForm } from "./invite-user-form";
@@ -245,7 +246,8 @@ export default async function GroupPage({
                     <ConfirmDeleteButton
                       action={deleteExpense.bind(null, id, expense.id)}
                       message="Delete this expense? This cannot be undone."
-                      className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none"
+                      pendingLabel="Deleting..."
+                      className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none disabled:opacity-70 disabled:cursor-not-allowed"
                       title="Delete expense"
                     >
                       ×
@@ -361,12 +363,12 @@ export default async function GroupPage({
               placeholder="Add a member…"
               className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
             />
-            <button
-              type="submit"
+            <PendingSubmitButton
+              pendingLabel="Adding..."
               className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
             >
               Add
-            </button>
+            </PendingSubmitButton>
           </form>
         </div>
       </section>

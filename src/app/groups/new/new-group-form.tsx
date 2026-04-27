@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { createGroup } from "@/app/actions";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 
 export function NewGroupForm({ submissionToken: initialSubmissionToken }: { submissionToken: string }) {
   const [memberInputs, setMemberInputs] = useState(["", ""]);
@@ -80,12 +81,12 @@ export function NewGroupForm({ submissionToken: initialSubmissionToken }: { subm
         </button>
       </div>
 
-      <button
-        type="submit"
+      <PendingSubmitButton
+        pendingLabel="Creating..."
         className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors"
       >
         Create Group
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }
