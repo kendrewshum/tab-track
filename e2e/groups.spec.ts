@@ -177,6 +177,51 @@ test.describe("Group management", () => {
     ).toHaveCount(1);
   });
 
+  test("Add member shows a pending state while submission is in flight", async ({ page }) => {
+    const id = await createTestGroup(page, "Dinner Club Pending Add", ["Alice", "Bob"]);
+
+    await page.getByPlaceholder("Add a member…").fill("Carol");
+
+    let releaseSubmit: () => void;
+    const submitBlocked = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let sawSubmitRequest = false;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+
+      if (
+        !sawSubmitRequest &&
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === `/groups/${id}`
+      ) {
+        sawSubmitRequest = true;
+        await submitBlocked;
+      }
+
+      await route.continue();
+    });
+
+    const membersSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Members" }) });
+    const submit = membersSection.locator('button[type="submit"]');
+    const clickPromise = submit.click();
+
+    await expect.poll(() => sawSubmitRequest).toBe(true);
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveText("Adding...");
+
+    releaseSubmit!();
+    await clickPromise;
+
+    await expect(page.getByText("3 members")).toBeVisible();
+    await expect(
+      membersSection.getByText("Carol", { exact: true })
+    ).toBeVisible();
+  });
+
   test("can navigate back to home from a group page", async ({ page }) => {
     await createTestGroup(page, "Road Trip", ["Alice", "Bob"]);
 
