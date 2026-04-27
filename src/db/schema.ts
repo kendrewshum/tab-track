@@ -132,3 +132,26 @@ export const settlements = sqliteTable(
     }),
   ]
 );
+
+export const idempotentSubmissions = sqliteTable(
+  "idempotent_submissions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    actionKind: text("action_kind", {
+      enum: ["createGroup", "createExpense", "createSettlement", "addMember"],
+    }).notNull(),
+    submissionToken: text("submission_token").notNull(),
+    redirectPath: text("redirect_path").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    userActionTokenUniqueIndex: uniqueIndex(
+      "idempotent_submissions_user_action_token_unique"
+    ).on(table.userId, table.actionKind, table.submissionToken),
+  })
+);
