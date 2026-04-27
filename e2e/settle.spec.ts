@@ -108,6 +108,55 @@ test.describe("Settle up", () => {
     await expect(page.getByText("Payment recorded")).toHaveCount(1);
   });
 
+  test("Record Payment shows a pending state while submission is in flight", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Pending Payment", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Lunch", amount: "30", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.goto(`/groups/${id}/settle`);
+    await page.locator("select[name='paidById']").last().selectOption({ label: "Bob" });
+    await page.locator("select[name='paidToId']").last().selectOption({ label: "Alice" });
+    await page.locator("input[name='amount']").last().fill("15");
+    await page.locator("input[name='note']").fill("Pending Venmo");
+
+    let releaseSubmit: () => void;
+    const submitBlocked = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let sawSubmitRequest = false;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+
+      if (
+        !sawSubmitRequest &&
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === `/groups/${id}/settle`
+      ) {
+        sawSubmitRequest = true;
+        await submitBlocked;
+      }
+
+      await route.continue();
+    });
+
+    const manualPaymentSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Record a Payment" }) });
+    const submit = manualPaymentSection.locator('button[type="submit"]');
+    const clickPromise = submit.click();
+
+    await expect.poll(() => sawSubmitRequest).toBe(true);
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveText("Recording...");
+
+    releaseSubmit!();
+    await clickPromise;
+
+    await expect(page.getByText("Pending Venmo")).toBeVisible();
+    await expect(page.getByText("$15.00")).toBeVisible();
+  });
+
   test("editing a settled expense reopens balances and shows a warning on settle up", async ({ page }) => {
     const id = await createTestGroup(page, "E2E Reopen Debt", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Museum", amount: "10", paidBy: "Alice" });

@@ -37,6 +37,51 @@ test.describe("Group management", () => {
     await expect(page.locator("a").filter({ hasText: "One Cabin" })).toHaveCount(1);
   });
 
+  test("Create Group shows a pending state while submission is in flight", async ({ page }) => {
+    await signUpAndLogin(page);
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Pending Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+
+    let releaseSubmit: () => void;
+    const submitBlocked = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let sawSubmitRequest = false;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+
+      if (
+        !sawSubmitRequest &&
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/groups/new"
+      ) {
+        sawSubmitRequest = true;
+        await submitBlocked;
+      }
+
+      await route.continue();
+    });
+
+    const form = page.locator("form").filter({
+      has: page.getByPlaceholder("e.g. Tokyo Trip, Apartment"),
+    });
+    const submit = form.locator('button[type="submit"]');
+    const clickPromise = submit.click();
+
+    await expect.poll(() => sawSubmitRequest).toBe(true);
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveText("Creating...");
+
+    releaseSubmit!();
+    await clickPromise;
+
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: "Pending Cabin" })).toBeVisible();
+  });
+
   test("legitimate second group create after revisiting the form is not replayed", async ({
     page,
   }) => {
