@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createExpense, updateExpense } from "@/app/actions";
 import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
@@ -30,7 +30,7 @@ export function ExpenseForm({
   const editing = !!expense;
   const total = expense?.amount ?? 0;
   const paidByFieldId = "paid-by";
-  const submissionToken = useId();
+  const [submissionToken] = useState(() => crypto.randomUUID());
 
   const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
   const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));

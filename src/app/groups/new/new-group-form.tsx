@@ -1,13 +1,13 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { createGroup } from "@/app/actions";
 
 export function NewGroupForm() {
   const [memberInputs, setMemberInputs] = useState(["", ""]);
-  const submissionToken = useId();
+  const [submissionToken] = useState(() => crypto.randomUUID());
 
   const addMember = () => setMemberInputs((p) => [...p, ""]);
   const removeMember = (i: number) =>
