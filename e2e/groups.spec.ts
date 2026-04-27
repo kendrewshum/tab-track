@@ -61,6 +61,37 @@ test.describe("Group management", () => {
     await expect(page.locator("a").filter({ hasText: "Second Cabin" })).toHaveCount(1);
   });
 
+  test("legitimate group create from a restored form gets a fresh token", async ({
+    page,
+  }) => {
+    await signUpAndLogin(page);
+
+    await page.goto("/groups/new");
+    const firstToken = await page.locator('input[name="_submissionToken"]').inputValue();
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Back Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+
+    await page.goto("/");
+    await expect(page).toHaveURL("/");
+
+    await page.goBack();
+    await expect(page).toHaveURL("/groups/new");
+    await page.waitForFunction((token) => {
+      const input = document.querySelector<HTMLInputElement>('input[name="_submissionToken"]');
+      return input ? input.value !== token : false;
+    }, firstToken);
+
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Back Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+
+    await page.goto("/");
+    await expect(page.locator("a").filter({ hasText: "Back Cabin" })).toHaveCount(1);
+  });
+
   test("new group appears on the home page", async ({ page }) => {
     const id = await createTestGroup(page, "Barcelona Trip", ["Maria", "Carlos"]);
 

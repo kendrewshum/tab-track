@@ -1,12 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { createGroup } from "@/app/actions";
 
-export function NewGroupForm({ submissionToken }: { submissionToken: string }) {
+export function NewGroupForm({ submissionToken: initialSubmissionToken }: { submissionToken: string }) {
   const [memberInputs, setMemberInputs] = useState(["", ""]);
+  const [submissionToken, setSubmissionToken] = useState(initialSubmissionToken);
+
+  useEffect(() => {
+    const rotateToken = () => setSubmissionToken(crypto.randomUUID());
+
+    const refreshToken = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        rotateToken();
+      }
+    };
+
+    window.addEventListener("pageshow", refreshToken);
+
+    return () => {
+      window.removeEventListener("pageshow", refreshToken);
+    };
+  }, []);
 
   const addMember = () => setMemberInputs((p) => [...p, ""]);
   const removeMember = (i: number) =>

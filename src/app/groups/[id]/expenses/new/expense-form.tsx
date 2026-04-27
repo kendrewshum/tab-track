@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createExpense, updateExpense } from "@/app/actions";
 import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
@@ -18,20 +18,50 @@ type ExistingExpense = {
   splits: { memberId: string; amount: number }[];
 };
 
+type CreateExpenseFormProps = {
+  groupId: string;
+  members: Member[];
+  submissionToken: string;
+  expense?: undefined;
+};
+
+type EditExpenseFormProps = {
+  groupId: string;
+  members: Member[];
+  expense: ExistingExpense;
+  submissionToken?: never;
+};
+
 export function ExpenseForm({
   groupId,
   members,
   expense,
-  submissionToken,
-}: {
-  groupId: string;
-  members: Member[];
-  expense?: ExistingExpense;
-  submissionToken?: string;
-}) {
+  submissionToken: initialSubmissionToken,
+}: CreateExpenseFormProps | EditExpenseFormProps) {
   const editing = !!expense;
   const total = expense?.amount ?? 0;
   const paidByFieldId = "paid-by";
+  const [submissionToken, setSubmissionToken] = useState(initialSubmissionToken);
+
+  useEffect(() => {
+    if (editing) {
+      return;
+    }
+
+    const rotateToken = () => setSubmissionToken(crypto.randomUUID());
+
+    const refreshToken = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        rotateToken();
+      }
+    };
+
+    window.addEventListener("pageshow", refreshToken);
+
+    return () => {
+      window.removeEventListener("pageshow", refreshToken);
+    };
+  }, [editing]);
 
   const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
   const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));
