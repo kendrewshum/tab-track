@@ -10,6 +10,7 @@ import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate, today } from "@/lib/format";
 import { requireGroupAccess } from "@/lib/server/session";
 import { hasExpenseEditsAfterSettlementStarted } from "@/lib/history";
+import { generateId } from "@/lib/utils";
 import { createSettlement, reverseSettlement } from "@/app/actions";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 
@@ -86,6 +87,7 @@ export default async function SettlePage({
   );
 
   const settleAction = createSettlement.bind(null, id);
+  const manualSettlementSubmissionToken = generateId();
 
   return (
     <div className="space-y-6">
@@ -129,6 +131,7 @@ export default async function SettlePage({
                   <span className="text-green-600 font-bold"> {formatCurrency(debt.amount)}</span>
                 </p>
                 <form action={settleAction}>
+                  <input type="hidden" name="_submissionToken" value={generateId()} />
                   <input type="hidden" name="paidById" value={debt.fromId} />
                   <input type="hidden" name="paidToId" value={debt.toId} />
                   <input type="hidden" name="amount" value={debt.amount} />
@@ -153,6 +156,11 @@ export default async function SettlePage({
           action={settleAction}
           className="bg-white border border-slate-200 rounded-xl p-4 space-y-3"
         >
+          <input
+            type="hidden"
+            name="_submissionToken"
+            value={manualSettlementSubmissionToken}
+          />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">From</label>

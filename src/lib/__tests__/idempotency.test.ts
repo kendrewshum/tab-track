@@ -17,6 +17,13 @@ describe("readSubmissionToken", () => {
   it("returns null when the hidden field is missing", () => {
     expect(readSubmissionToken(new FormData())).toBeNull();
   });
+
+  it("returns null for blank submission tokens", () => {
+    const formData = new FormData();
+    formData.set("_submissionToken", "   ");
+
+    expect(readSubmissionToken(formData)).toBeNull();
+  });
 });
 
 describe("buildCreateRedirectPath", () => {

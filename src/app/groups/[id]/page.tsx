@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { requireGroupAccess } from "@/lib/server/session";
 import { buildActivityEvents, getPostSettlementEditedExpenseIds } from "@/lib/history";
 import { addMember, deleteExpense } from "@/app/actions";
+import { generateId } from "@/lib/utils";
 import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
 import { InviteUserForm } from "./invite-user-form";
@@ -99,6 +100,7 @@ export default async function GroupPage({
   });
 
   const addMemberAction = addMember.bind(null, id);
+  const addMemberSubmissionToken = generateId();
 
   return (
     <div className="space-y-6">
@@ -353,6 +355,7 @@ export default async function GroupPage({
             </div>
           ))}
           <form action={addMemberAction} className="flex gap-2 p-3">
+            <input type="hidden" name="_submissionToken" value={addMemberSubmissionToken} />
             <input
               name="name"
               placeholder="Add a member…"

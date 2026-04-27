@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { createExpense, updateExpense } from "@/app/actions";
 import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
@@ -30,6 +30,7 @@ export function ExpenseForm({
   const editing = !!expense;
   const total = expense?.amount ?? 0;
   const paidByFieldId = "paid-by";
+  const submissionToken = useId();
 
   const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
   const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));
@@ -113,6 +114,7 @@ export function ExpenseForm({
 
   return (
     <form action={action} className="space-y-5">
+      {!editing && <input type="hidden" name="_submissionToken" value={submissionToken} />}
       {/* Description */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>

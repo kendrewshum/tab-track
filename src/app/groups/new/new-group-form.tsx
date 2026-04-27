@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { createGroup } from "@/app/actions";
 
 export function NewGroupForm() {
   const [memberInputs, setMemberInputs] = useState(["", ""]);
+  const submissionToken = useId();
 
   const addMember = () => setMemberInputs((p) => [...p, ""]);
   const removeMember = (i: number) =>
@@ -16,6 +17,7 @@ export function NewGroupForm() {
 
   return (
     <form action={createGroup} className="space-y-5">
+      <input type="hidden" name="_submissionToken" value={submissionToken} />
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Group Name
