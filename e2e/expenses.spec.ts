@@ -19,6 +19,22 @@ test.describe("Adding expenses – equal split", () => {
     await expect(page.getByText("-$5.00")).toBeVisible();
   });
 
+  test("double-clicking Add Expense only creates one expense", async ({ page }) => {
+    const id = await createTestGroup(page, "No Duplicates", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Dinner", amount: "10", paidBy: "Alice" });
+
+    const submit = page.getByRole("button", { name: "Add Expense" });
+    await submit.dblclick();
+
+    await expect(page).toHaveURL(`/groups/${id}`);
+    await expect(
+      page
+        .locator("section")
+        .filter({ has: page.getByRole("heading", { name: "Expenses" }) })
+        .getByText("Dinner", { exact: true })
+    ).toHaveCount(1);
+  });
+
   test("payer gets the higher cent when $10 splits 3 ways ($3.34 not $3.33)", async ({ page }) => {
     // Rounding rule: Alice paid → Alice owes $3.34, others $3.33 each.
     const id = await createTestGroup(page, "E2E Equal 3", ["Alice", "Bob", "Carol"]);

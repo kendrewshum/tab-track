@@ -20,6 +20,23 @@ test.describe("Group management", () => {
     await expect(page.getByText("2 members")).toBeVisible();
   });
 
+  test("double-clicking Create Group only creates one group", async ({ page }) => {
+    await signUpAndLogin(page);
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("One Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+
+    const submit = page.getByRole("button", { name: "Create Group" });
+    await submit.dblclick();
+
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: "One Cabin" })).toBeVisible();
+
+    await page.goto("/");
+    await expect(page.locator("a").filter({ hasText: "One Cabin" })).toHaveCount(1);
+  });
+
   test("new group appears on the home page", async ({ page }) => {
     const id = await createTestGroup(page, "Barcelona Trip", ["Maria", "Carlos"]);
 
