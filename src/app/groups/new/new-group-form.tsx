@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { createGroup } from "@/app/actions";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 
-export function NewGroupForm() {
+export function NewGroupForm({ submissionToken: initialSubmissionToken }: { submissionToken: string }) {
   const [memberInputs, setMemberInputs] = useState(["", ""]);
+  const [submissionToken, setSubmissionToken] = useState(initialSubmissionToken);
+
+  useEffect(() => {
+    const rotateToken = () => setSubmissionToken(crypto.randomUUID());
+
+    const refreshToken = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        rotateToken();
+      }
+    };
+
+    window.addEventListener("pageshow", refreshToken);
+
+    return () => {
+      window.removeEventListener("pageshow", refreshToken);
+    };
+  }, []);
 
   const addMember = () => setMemberInputs((p) => [...p, ""]);
   const removeMember = (i: number) =>
@@ -16,6 +34,7 @@ export function NewGroupForm() {
 
   return (
     <form action={createGroup} className="space-y-5">
+      <input type="hidden" name="_submissionToken" value={submissionToken} />
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Group Name
@@ -62,12 +81,12 @@ export function NewGroupForm() {
         </button>
       </div>
 
-      <button
-        type="submit"
+      <PendingSubmitButton
+        pendingLabel="Creating..."
         className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors"
       >
         Create Group
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }
