@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
+import { TabTrackLogo } from "@/components/tab-track-logo";
 
 import { logoutAction } from "@/app/auth-actions";
 import { getCurrentUser } from "@/lib/server/session";
@@ -14,6 +15,11 @@ export const metadata: Metadata = {
   title: "TabTrack",
   description: "Split expenses with friends",
   manifest: "/manifest.json",
+  icons: {
+    icon: [{ url: "/tabtrack-mark.svg", type: "image/svg+xml" }],
+    shortcut: ["/tabtrack-mark.svg"],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -39,9 +45,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div className="max-w-lg mx-auto px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <Link href="/" className="flex items-center gap-2 w-fit">
-                  <div className="w-7 h-7 bg-green-600 rounded-lg flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">T</span>
-                  </div>
+                  <TabTrackLogo decorative className="h-7 w-7 shrink-0" />
                   <span className="font-semibold text-slate-900">TabTrack</span>
                 </Link>
 
@@ -72,7 +76,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </div>
             </div>
           </header>
-          <main className="max-w-lg mx-auto px-4 py-6">{children}</main>
+          <main className="mx-auto max-w-lg px-4 py-6">{children}</main>
         </div>
       </body>
     </html>

@@ -45,14 +45,21 @@ test.describe("Settle up", () => {
     // Net: Alice +$5, Bob $0, Carol -$5 → simplified: Carol pays Alice $5 directly.
     const id = await createTestGroup(page, "E2E Simplify", ["Alice", "Bob", "Carol"]);
 
+    const participantToggle = (memberName: string) =>
+      page
+        .locator("div.border.rounded-xl")
+        .filter({ has: page.getByText(memberName, { exact: true }) })
+        .getByRole("button")
+        .first();
+
     await fillExpenseBase(page, id, { description: "E1", amount: "10", paidBy: "Alice" });
     // Exclude Carol from first expense (Alice and Bob only)
-    await page.locator("button.w-5.h-5.rounded").nth(2).click(); // uncheck Carol
+    await participantToggle("Carol").click();
     await page.getByRole("button", { name: "Add Expense" }).click();
 
     await fillExpenseBase(page, id, { description: "E2", amount: "10", paidBy: "Bob" });
     // Exclude Alice from second expense (Bob and Carol only)
-    await page.locator("button.w-5.h-5.rounded").nth(0).click(); // uncheck Alice
+    await participantToggle("Alice").click();
     await page.getByRole("button", { name: "Add Expense" }).click();
 
     await page.goto(`/groups/${id}/settle`);
