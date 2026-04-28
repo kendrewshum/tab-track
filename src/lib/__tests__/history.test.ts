@@ -147,22 +147,27 @@ describe("buildActivityEvents", () => {
 });
 
 describe("getActivityVisibleCount", () => {
-  it("falls back to the default chunk size for missing or invalid values", () => {
+  it("falls back to the default chunk size for missing, invalid, or undersized values", () => {
     expect(getActivityVisibleCount(undefined)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
-    expect(getActivityVisibleCount("abc")).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
-    expect(getActivityVisibleCount("0")).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
-    expect(getActivityVisibleCount("19")).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(Number.NaN)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(0)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(19)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
   });
 
   it("snaps valid values up to the next chunk boundary", () => {
-    expect(getActivityVisibleCount("20")).toBe(20);
-    expect(getActivityVisibleCount("21")).toBe(40);
-    expect(getActivityVisibleCount(["41"])).toBe(60);
+    expect(getActivityVisibleCount(20)).toBe(20);
+    expect(getActivityVisibleCount(21)).toBe(40);
+    expect(getActivityVisibleCount(41)).toBe(60);
+  });
+
+  it("snaps decimal numeric values up to the next chunk boundary", () => {
+    expect(getActivityVisibleCount(20.5)).toBe(40);
+    expect(getActivityVisibleCount(Number.NaN)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
   });
 });
 
 describe("buildActivityArchive", () => {
-  it("returns the newest visible items and the next visible count when older items remain", () => {
+  it("returns the leading slice and the next visible count when older items remain", () => {
     const items = Array.from({ length: 25 }, (_, index) => ({ id: `event-${index + 1}` }));
 
     expect(buildActivityArchive(items, 20)).toEqual({
@@ -172,7 +177,7 @@ describe("buildActivityArchive", () => {
     });
   });
 
-  it("reports no more items once the full archive is visible", () => {
+  it("returns the full slice when the archive fits within the visible window", () => {
     const items = Array.from({ length: 12 }, (_, index) => ({ id: `event-${index + 1}` }));
 
     expect(buildActivityArchive(items, 20)).toEqual({

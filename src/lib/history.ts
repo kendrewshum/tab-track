@@ -87,17 +87,14 @@ export function createExpenseSnapshot(
 }
 
 export function getActivityVisibleCount(
-  rawValue: string | string[] | undefined,
+  requestedCount: number | undefined,
   chunkSize = DEFAULT_ACTIVITY_CHUNK_SIZE
 ): number {
-  const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
-  const parsed = Number.parseInt(value ?? "", 10);
-
-  if (!Number.isFinite(parsed) || parsed < chunkSize) {
+  if (!Number.isFinite(requestedCount) || requestedCount < chunkSize) {
     return chunkSize;
   }
 
-  return Math.ceil(parsed / chunkSize) * chunkSize;
+  return Math.ceil(requestedCount / chunkSize) * chunkSize;
 }
 
 export function buildActivityArchive<T>(
