@@ -188,6 +188,13 @@ test.describe("Settle up", () => {
 
     await page.getByRole("link", { name: /Settle up/i }).click();
     await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await page.locator("select[name='paidById']").last().selectOption({ label: "Bob" });
+    await page.locator("select[name='paidToId']").last().selectOption({ label: "Alice" });
+    await page.locator("input[name='amount']").last().fill("5");
+    await page.locator("input[name='note']").fill("Archive state check");
+    await page.getByRole("button", { name: "Record Payment" }).click();
+    await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await expect(page.getByText("Archive state check")).toBeVisible();
     await page.getByRole("link", { name: new RegExp(`← E2E Activity Archive`) }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
     await expect(activitySection.getByText("Expense 01")).toBeVisible();

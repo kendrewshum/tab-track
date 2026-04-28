@@ -87,10 +87,18 @@ export default async function SettlePage({
     a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
   );
   const requestedActivityCount = parseActivityCountSearchParam(resolvedSearchParams.activity);
-  const groupPageHref =
+  const normalizedActivityCount =
     requestedActivityCount === undefined
+      ? undefined
+      : getActivityVisibleCount(requestedActivityCount);
+  const groupPageHref =
+    normalizedActivityCount === undefined
       ? `/groups/${id}`
-      : `/groups/${id}?activity=${getActivityVisibleCount(requestedActivityCount)}`;
+      : `/groups/${id}?activity=${normalizedActivityCount}`;
+  const settlePageHref =
+    normalizedActivityCount === undefined
+      ? `/groups/${id}/settle`
+      : `/groups/${id}/settle?activity=${normalizedActivityCount}`;
 
   const settleAction = createSettlement.bind(null, id);
 
@@ -140,6 +148,7 @@ export default async function SettlePage({
                   <input type="hidden" name="paidToId" value={debt.toId} />
                   <input type="hidden" name="amount" value={debt.amount} />
                   <input type="hidden" name="date" value={today()} />
+                  <input type="hidden" name="redirectTo" value={settlePageHref} />
                   <button
                     type="submit"
                     className="w-full py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
@@ -160,6 +169,7 @@ export default async function SettlePage({
           action={settleAction}
           className="bg-white border border-slate-200 rounded-xl p-4 space-y-3"
         >
+          <input type="hidden" name="redirectTo" value={settlePageHref} />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">From</label>
@@ -269,7 +279,7 @@ export default async function SettlePage({
                 </div>
                 {!s.reversalOfSettlementId && !reversedSettlementIds.has(s.id) && (
                   <ConfirmDeleteButton
-                    action={reverseSettlement.bind(null, id, s.id)}
+                    action={reverseSettlement.bind(null, id, s.id, settlePageHref)}
                     message="Record a reversing payment for this entry?"
                     className="text-sm text-amber-700 hover:text-amber-800 font-medium transition-colors"
                     title="Reverse payment"
