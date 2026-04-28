@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_ACTIVITY_CHUNK_SIZE,
+  buildActivityArchive,
   buildActivityEvents,
   createExpenseSnapshot,
+  getActivityVisibleCount,
   getPostSettlementEditedExpenseIds,
   hasExpenseEditsAfterSettlementStarted,
   parseExpenseSnapshot,
@@ -139,6 +142,43 @@ describe("buildActivityEvents", () => {
       expenseId: "expense-1",
       before: { description: "Cab", amount: 24 },
       after: { description: "Cab + toll", amount: 30 },
+    });
+  });
+});
+
+describe("getActivityVisibleCount", () => {
+  it("falls back to the default chunk size for missing or invalid values", () => {
+    expect(getActivityVisibleCount(undefined)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount("abc")).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount("0")).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount("19")).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+  });
+
+  it("snaps valid values up to the next chunk boundary", () => {
+    expect(getActivityVisibleCount("20")).toBe(20);
+    expect(getActivityVisibleCount("21")).toBe(40);
+    expect(getActivityVisibleCount(["41"])).toBe(60);
+  });
+});
+
+describe("buildActivityArchive", () => {
+  it("returns the newest visible items and the next visible count when older items remain", () => {
+    const items = Array.from({ length: 25 }, (_, index) => ({ id: `event-${index + 1}` }));
+
+    expect(buildActivityArchive(items, 20)).toEqual({
+      visibleItems: items.slice(0, 20),
+      hasMore: true,
+      nextVisibleCount: 40,
+    });
+  });
+
+  it("reports no more items once the full archive is visible", () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({ id: `event-${index + 1}` }));
+
+    expect(buildActivityArchive(items, 20)).toEqual({
+      visibleItems: items,
+      hasMore: false,
+      nextVisibleCount: 40,
     });
   });
 });

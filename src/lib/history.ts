@@ -66,6 +66,8 @@ export type ActivityEvent =
       reversalOfSettlementId: string | null;
     };
 
+export const DEFAULT_ACTIVITY_CHUNK_SIZE = 20;
+
 export function serializeExpenseSnapshot(snapshot: ExpenseSnapshot): string {
   return JSON.stringify(snapshot);
 }
@@ -81,6 +83,39 @@ export function createExpenseSnapshot(
   return {
     ...expense,
     splits: splits.map((split) => ({ ...split })),
+  };
+}
+
+export function getActivityVisibleCount(
+  rawValue: string | string[] | undefined,
+  chunkSize = DEFAULT_ACTIVITY_CHUNK_SIZE
+): number {
+  const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+  const parsed = Number.parseInt(value ?? "", 10);
+
+  if (!Number.isFinite(parsed) || parsed < chunkSize) {
+    return chunkSize;
+  }
+
+  return Math.ceil(parsed / chunkSize) * chunkSize;
+}
+
+export function buildActivityArchive<T>(
+  items: T[],
+  visibleCount: number,
+  chunkSize = DEFAULT_ACTIVITY_CHUNK_SIZE
+): {
+  visibleItems: T[];
+  hasMore: boolean;
+  nextVisibleCount: number;
+} {
+  const safeVisibleCount = Math.max(visibleCount, chunkSize);
+  const visibleItems = items.slice(0, safeVisibleCount);
+
+  return {
+    visibleItems,
+    hasMore: items.length > visibleItems.length,
+    nextVisibleCount: safeVisibleCount + chunkSize,
   };
 }
 
