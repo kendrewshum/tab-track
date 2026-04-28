@@ -195,6 +195,13 @@ test.describe("Settle up", () => {
     await page.getByRole("button", { name: "Record Payment" }).click();
     await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
     await expect(page.getByText("Archive state check")).toBeVisible();
+
+    page.on("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Reverse payment" }).first().click();
+    await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await expect(page.getByText("Payment reversed")).toBeVisible();
+    await expect(page.getByText("Reversal of payment")).toBeVisible();
+
     await page.getByRole("link", { name: new RegExp(`← E2E Activity Archive`) }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
     await expect(activitySection.getByText("Expense 01")).toBeVisible();
