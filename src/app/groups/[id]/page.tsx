@@ -104,14 +104,17 @@ export default async function GroupPage({
     revisions: groupExpenseRevisions,
     settlements: groupSettlements,
   });
-  const visibleActivityCount = getActivityVisibleCount(
-    parseActivityCountSearchParam(resolvedSearchParams.activity)
-  );
+  const requestedActivityCount = parseActivityCountSearchParam(resolvedSearchParams.activity);
+  const visibleActivityCount = getActivityVisibleCount(requestedActivityCount);
   const {
     visibleItems: visibleActivityEvents,
     hasMore: hasMoreActivity,
     nextVisibleCount: nextActivityVisibleCount,
   } = buildActivityArchive(activityEvents, visibleActivityCount);
+  const settlePageHref =
+    requestedActivityCount === undefined
+      ? `/groups/${id}/settle`
+      : `/groups/${id}/settle?activity=${visibleActivityCount}`;
 
   const addMemberAction = addMember.bind(null, id);
 
@@ -143,7 +146,7 @@ export default async function GroupPage({
           <h2 className="font-semibold text-slate-900">Balances</h2>
           {debts.length > 0 && (
             <Link
-              href={`/groups/${id}/settle`}
+              href={settlePageHref}
               className="flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
             >
               Settle up <ArrowRight size={14} />
@@ -410,10 +413,13 @@ export default async function GroupPage({
 }
 
 function parseActivityCountSearchParam(value: string | string[] | undefined): number | undefined {
-  const normalized = Array.isArray(value) ? value[0] : value;
-  if (normalized === undefined || !/^\d+$/.test(normalized)) {
+  if (Array.isArray(value)) {
     return undefined;
   }
 
-  return Number.parseInt(normalized, 10);
+  if (value === undefined || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+
+  return Number.parseInt(value, 10);
 }

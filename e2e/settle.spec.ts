@@ -171,6 +171,11 @@ test.describe("Settle up", () => {
     await expect(activitySection.getByText("Expense 02")).toBeVisible();
     await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
 
+    await page.goto(`/groups/${id}?activity=20&activity=40`);
+    await expect(activitySection.getByText("Expense 21")).toBeVisible();
+    await expect(activitySection.getByText("Expense 02")).toBeVisible();
+    await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
+
     await activitySection.getByRole("link", { name: "Load more activity" }).click();
 
     await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
@@ -182,8 +187,8 @@ test.describe("Settle up", () => {
     await expect(activitySection.getByText("Expense 01")).toBeVisible();
 
     await page.getByRole("link", { name: /Settle up/i }).click();
-    await expect(page).toHaveURL(`/groups/${id}/settle`);
-    await page.goBack();
+    await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await page.getByRole("link", { name: new RegExp(`← E2E Activity Archive`) }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
     await expect(activitySection.getByText("Expense 01")).toBeVisible();
   });

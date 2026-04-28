@@ -9,7 +9,7 @@ import { expenseRevisions, expenseSplits, expenses, groups, members, settlements
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate, today } from "@/lib/format";
 import { requireGroupAccess } from "@/lib/server/session";
-import { hasExpenseEditsAfterSettlementStarted } from "@/lib/history";
+import { getActivityVisibleCount, hasExpenseEditsAfterSettlementStarted } from "@/lib/history";
 import { createSettlement, reverseSettlement } from "@/app/actions";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 
@@ -21,10 +21,12 @@ type ExpenseRevisionRow = typeof expenseRevisions.$inferSelect;
 
 export default async function SettlePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ activity?: string | string[] }>;
 }) {
-  const { id } = await params;
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
@@ -84,13 +86,18 @@ export default async function SettlePage({
   const settlementActivity = [...groupSettlements].sort((a, b) =>
     a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
   );
+  const requestedActivityCount = parseActivityCountSearchParam(resolvedSearchParams.activity);
+  const groupPageHref =
+    requestedActivityCount === undefined
+      ? `/groups/${id}`
+      : `/groups/${id}?activity=${getActivityVisibleCount(requestedActivityCount)}`;
 
   const settleAction = createSettlement.bind(null, id);
 
   return (
     <div className="space-y-6">
       <div>
-        <Link href={`/groups/${id}`} className="text-sm text-green-600 hover:text-green-700">
+        <Link href={groupPageHref} className="text-sm text-green-600 hover:text-green-700">
           ← {group.name}
         </Link>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">Settle Up</h1>
@@ -277,4 +284,16 @@ export default async function SettlePage({
       )}
     </div>
   );
+}
+
+function parseActivityCountSearchParam(value: string | string[] | undefined): number | undefined {
+  if (Array.isArray(value)) {
+    return undefined;
+  }
+
+  if (value === undefined || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+
+  return Number.parseInt(value, 10);
 }
