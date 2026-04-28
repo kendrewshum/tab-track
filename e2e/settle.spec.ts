@@ -90,6 +90,73 @@ test.describe("Settle up", () => {
     await expect(page.getByText("$15.00")).toBeVisible();
   });
 
+  test("double-clicking Record Payment only records one payment", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E History Double Submit", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Lunch", amount: "30", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.goto(`/groups/${id}/settle`);
+
+    await page.locator("select[name='paidById']").last().selectOption({ label: "Bob" });
+    await page.locator("select[name='paidToId']").last().selectOption({ label: "Alice" });
+    await page.locator("input[name='amount']").last().fill("15");
+    await page.locator("input[name='note']").fill("Venmo");
+    await page.getByRole("button", { name: "Record Payment" }).dblclick();
+
+    await expect(page.getByText("Venmo")).toHaveCount(1);
+    await expect(page.getByText("$15.00")).toHaveCount(1);
+    await expect(page.getByText("Payment recorded")).toHaveCount(1);
+  });
+
+  test("Record Payment shows a pending state while submission is in flight", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Pending Payment", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Lunch", amount: "30", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+
+    await page.goto(`/groups/${id}/settle`);
+    await page.locator("select[name='paidById']").last().selectOption({ label: "Bob" });
+    await page.locator("select[name='paidToId']").last().selectOption({ label: "Alice" });
+    await page.locator("input[name='amount']").last().fill("15");
+    await page.locator("input[name='note']").fill("Pending Venmo");
+
+    let releaseSubmit: () => void;
+    const submitBlocked = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let sawSubmitRequest = false;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+
+      if (
+        !sawSubmitRequest &&
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === `/groups/${id}/settle`
+      ) {
+        sawSubmitRequest = true;
+        await submitBlocked;
+      }
+
+      await route.continue();
+    });
+
+    const manualPaymentSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Record a Payment" }) });
+    const submit = manualPaymentSection.locator('button[type="submit"]');
+    const clickPromise = submit.click();
+
+    await expect.poll(() => sawSubmitRequest).toBe(true);
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveText("Recording...");
+
+    releaseSubmit!();
+    await clickPromise;
+
+    await expect(page.getByText("Pending Venmo")).toBeVisible();
+    await expect(page.getByText("$15.00")).toBeVisible();
+  });
+
   test("editing a settled expense reopens balances and shows a warning on settle up", async ({ page }) => {
     const id = await createTestGroup(page, "E2E Reopen Debt", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Museum", amount: "10", paidBy: "Alice" });
@@ -140,6 +207,71 @@ test.describe("Settle up", () => {
     await expect(activitySection.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
     await expect(activitySection.getByText("Expense edited")).toBeVisible();
     await expect(activitySection.getByText("Boat").first()).toBeVisible();
+  });
+
+  test("activity archive shows the newest chunk first and preserves load more state", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Activity Archive", ["Alice", "Bob"]);
+
+    for (let index = 1; index <= 21; index += 1) {
+      const date = `2026-01-${String(index).padStart(2, "0")}`;
+      await fillExpenseBase(page, id, {
+        description: `Expense ${String(index).padStart(2, "0")}`,
+        amount: "10",
+        paidBy: "Alice",
+      });
+      await page.locator("input[name='date']").fill(date);
+      await page.getByRole("button", { name: "Add Expense" }).click();
+    }
+
+    const activitySection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Activity", exact: true }) });
+
+    await page.goto(`/groups/${id}?activity=40.5`);
+    await expect(activitySection.getByText("Expense 21")).toBeVisible();
+    await expect(activitySection.getByText("Expense 02")).toBeVisible();
+    await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
+    await expect(activitySection.getByRole("link", { name: "Load more activity" })).toBeVisible();
+
+    await page.goto(`/groups/${id}?activity=40xyz`);
+    await expect(activitySection.getByText("Expense 21")).toBeVisible();
+    await expect(activitySection.getByText("Expense 02")).toBeVisible();
+    await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
+
+    await page.goto(`/groups/${id}?activity=20&activity=40`);
+    await expect(activitySection.getByText("Expense 21")).toBeVisible();
+    await expect(activitySection.getByText("Expense 02")).toBeVisible();
+    await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
+
+    await activitySection.getByRole("link", { name: "Load more activity" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
+    await expect(activitySection.getByText("Expense 01")).toBeVisible();
+    await expect(activitySection.getByRole("link", { name: "Load more activity" })).toHaveCount(0);
+
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
+    await expect(activitySection.getByText("Expense 01")).toBeVisible();
+
+    await page.getByRole("link", { name: /Settle up/i }).click();
+    await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await page.locator("select[name='paidById']").last().selectOption({ label: "Bob" });
+    await page.locator("select[name='paidToId']").last().selectOption({ label: "Alice" });
+    await page.locator("input[name='amount']").last().fill("5");
+    await page.locator("input[name='note']").fill("Archive state check");
+    await page.getByRole("button", { name: "Record Payment" }).click();
+    await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await expect(page.getByText("Archive state check")).toBeVisible();
+
+    page.on("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Reverse payment" }).first().click();
+    await expect(page).toHaveURL(`/groups/${id}/settle?activity=40`);
+    await expect(page.getByText("Payment reversed")).toBeVisible();
+    await expect(page.getByText("Reversal of payment")).toBeVisible();
+
+    await page.getByRole("link", { name: new RegExp(`← E2E Activity Archive`) }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
+    await expect(activitySection.getByText("Expense 01")).toBeVisible();
   });
 
   test("can reverse a settlement record without erasing the original payment", async ({ page }) => {

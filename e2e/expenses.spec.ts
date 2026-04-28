@@ -19,6 +19,74 @@ test.describe("Adding expenses – equal split", () => {
     await expect(page.getByText("-$5.00")).toBeVisible();
   });
 
+  test("double-clicking Add Expense only creates one expense", async ({ page }) => {
+    const id = await createTestGroup(page, "No Duplicates", ["Alice", "Bob"]);
+    await fillExpenseBase(page, id, { description: "Dinner", amount: "10", paidBy: "Alice" });
+
+    const submit = page.getByRole("button", { name: "Add Expense" });
+    await submit.dblclick();
+
+    await expect(page).toHaveURL(`/groups/${id}`);
+    await expect(
+      page
+        .locator("section")
+        .filter({ has: page.getByRole("heading", { name: "Expenses" }) })
+        .getByText("Dinner", { exact: true })
+    ).toHaveCount(1);
+  });
+
+  test("legitimate second expense create after revisiting the form is not replayed", async ({
+    page,
+  }) => {
+    const id = await createTestGroup(page, "Fresh Tokens", ["Alice", "Bob"]);
+
+    await fillExpenseBase(page, id, { description: "Dinner", amount: "10", paidBy: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
+
+    await fillExpenseBase(page, id, { description: "Lunch", amount: "12", paidBy: "Bob" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
+
+    const expensesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Expenses" }) });
+
+    await expect(expensesSection.getByText("Dinner", { exact: true })).toHaveCount(1);
+    await expect(expensesSection.getByText("Lunch", { exact: true })).toHaveCount(1);
+  });
+
+  test("legitimate expense create from a restored form gets a fresh token", async ({
+    page,
+  }) => {
+    const id = await createTestGroup(page, "Back Expenses", ["Alice", "Bob"]);
+
+    await fillExpenseBase(page, id, { description: "Dinner", amount: "10", paidBy: "Alice" });
+    const firstToken = await page.locator('input[name="_submissionToken"]').inputValue();
+
+    await page.goto(`/groups/${id}`);
+    await expect(page).toHaveURL(`/groups/${id}`);
+
+    await page.goBack();
+    await expect(page).toHaveURL(`/groups/${id}/expenses/new`);
+    await page.waitForFunction((token) => {
+      const input = document.querySelector<HTMLInputElement>('input[name="_submissionToken"]');
+      return input ? input.value !== token : false;
+    }, firstToken);
+
+    await page.getByPlaceholder("e.g. Dinner, Hotel, Uber").fill("Dinner");
+    await page.getByPlaceholder("0.00").fill("10");
+    await page.getByRole("combobox", { name: /Paid by/i }).selectOption({ label: "Alice" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
+
+    const expensesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Expenses" }) });
+
+    await expect(expensesSection.getByText("Dinner", { exact: true })).toHaveCount(1);
+  });
+
   test("payer gets the higher cent when $10 splits 3 ways ($3.34 not $3.33)", async ({ page }) => {
     // Rounding rule: Alice paid → Alice owes $3.34, others $3.33 each.
     const id = await createTestGroup(page, "E2E Equal 3", ["Alice", "Bob", "Carol"]);

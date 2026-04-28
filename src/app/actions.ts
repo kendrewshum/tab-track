@@ -11,14 +11,75 @@ import {
   expenses,
   groupAccess,
   groups,
+  idempotentSubmissions,
   members,
   settlements,
 } from "@/db/schema";
 import { requireGroupAccess, requireUser } from "@/lib/server/session";
 import { formatDate, today } from "@/lib/format";
 import { createExpenseSnapshot, serializeExpenseSnapshot } from "@/lib/history";
+import {
+  buildCreateRedirectPath,
+  readSubmissionToken,
+  type CreateActionKind,
+} from "@/lib/idempotency";
 import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
 import { generateId } from "@/lib/utils";
+
+async function findIdempotentSubmission(
+  userId: string,
+  actionKind: CreateActionKind,
+  submissionToken: string
+) {
+  const [submission] = await db
+    .select({
+      redirectPath: idempotentSubmissions.redirectPath,
+    })
+    .from(idempotentSubmissions)
+    .where(
+      and(
+        eq(idempotentSubmissions.userId, userId),
+        eq(idempotentSubmissions.actionKind, actionKind),
+        eq(idempotentSubmissions.submissionToken, submissionToken)
+      )
+    )
+    .limit(1);
+
+  return submission ?? null;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Error && /unique|constraint/i.test(error.message);
+}
+
+function finishCreateAction(actionKind: CreateActionKind, redirectPath: string) {
+  switch (actionKind) {
+    case "createGroup":
+      redirect(redirectPath);
+    case "createExpense":
+    case "createSettlement":
+      revalidatePath(redirectPath);
+      redirect(redirectPath);
+    case "addMember":
+      revalidatePath(redirectPath);
+      return;
+  }
+}
+
+async function replayExistingCreateAction(
+  userId: string,
+  actionKind: CreateActionKind,
+  submissionToken: string
+) {
+  const existingSubmission = await findIdempotentSubmission(userId, actionKind, submissionToken);
+
+  if (!existingSubmission) {
+    return false;
+  }
+
+  finishCreateAction(actionKind, existingSubmission.redirectPath);
+  return true;
+}
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
 
@@ -28,22 +89,54 @@ export async function createGroup(formData: FormData) {
   const memberNames = (formData.getAll("members") as string[])
     .map((n) => n.trim())
     .filter(Boolean);
+  const actionKind = "createGroup" as const;
+  const submissionToken = readSubmissionToken(formData);
 
   if (!name || memberNames.length < 2) return;
 
-  const groupId = generateId();
-  await db.insert(groups).values({ id: groupId, name, createdByUserId: user.id });
-  await db.insert(groupAccess).values({
-    id: generateId(),
-    groupId,
-    userId: user.id,
-    role: "owner",
-  });
-  await db.insert(members).values(
-    memberNames.map((n) => ({ id: generateId(), groupId, name: n }))
-  );
+  if (submissionToken && (await replayExistingCreateAction(user.id, actionKind, submissionToken))) {
+    return;
+  }
 
-  redirect(`/groups/${groupId}`);
+  const groupId = generateId();
+  const redirectPath = buildCreateRedirectPath(actionKind, { groupId });
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(groups).values({ id: groupId, name, createdByUserId: user.id });
+      await tx.insert(groupAccess).values({
+        id: generateId(),
+        groupId,
+        userId: user.id,
+        role: "owner",
+      });
+      await tx.insert(members).values(
+        memberNames.map((memberName) => ({ id: generateId(), groupId, name: memberName }))
+      );
+
+      if (submissionToken) {
+        await tx.insert(idempotentSubmissions).values({
+          id: generateId(),
+          userId: user.id,
+          actionKind,
+          submissionToken,
+          redirectPath,
+        });
+      }
+    });
+  } catch (error) {
+    if (
+      submissionToken &&
+      isUniqueConstraintError(error) &&
+      (await replayExistingCreateAction(user.id, actionKind, submissionToken))
+    ) {
+      return;
+    }
+
+    throw error;
+  }
+
+  finishCreateAction(actionKind, redirectPath);
 }
 
 export async function deleteGroup(groupId: string) {
@@ -56,24 +149,59 @@ export async function deleteGroup(groupId: string) {
 // ─── Members ─────────────────────────────────────────────────────────────────
 
 export async function addMember(groupId: string, formData: FormData) {
-  await requireGroupAccess(groupId);
+  const { user } = await requireGroupAccess(groupId);
   const name = (formData.get("name") as string).trim();
+  const actionKind = "addMember" as const;
+  const submissionToken = readSubmissionToken(formData);
   if (!name) return;
 
-  await db.insert(members).values({ id: generateId(), groupId, name });
-  revalidatePath(`/groups/${groupId}`);
+  if (submissionToken && (await replayExistingCreateAction(user.id, actionKind, submissionToken))) {
+    return;
+  }
+
+  const redirectPath = buildCreateRedirectPath(actionKind, { groupId });
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(members).values({ id: generateId(), groupId, name });
+
+      if (submissionToken) {
+        await tx.insert(idempotentSubmissions).values({
+          id: generateId(),
+          userId: user.id,
+          actionKind,
+          submissionToken,
+          redirectPath,
+        });
+      }
+    });
+  } catch (error) {
+    if (
+      submissionToken &&
+      isUniqueConstraintError(error) &&
+      (await replayExistingCreateAction(user.id, actionKind, submissionToken))
+    ) {
+      return;
+    }
+
+    throw error;
+  }
+
+  finishCreateAction(actionKind, redirectPath);
 }
 
 // ─── Expenses ────────────────────────────────────────────────────────────────
 
 export async function createExpense(groupId: string, formData: FormData) {
-  await requireGroupAccess(groupId);
+  const { user } = await requireGroupAccess(groupId);
   const description = (formData.get("description") as string).trim();
   const amount = parseFloat(formData.get("amount") as string);
   const paidById = formData.get("paidById") as string;
   const splitType = formData.get("splitType") as SplitType;
   const date = formData.get("date") as string;
   const participantIds = formData.getAll("participants") as string[];
+  const actionKind = "createExpense" as const;
+  const submissionToken = readSubmissionToken(formData);
 
   if (
     !description ||
@@ -103,22 +231,52 @@ export async function createExpense(groupId: string, formData: FormData) {
   if (splits.length === 0) return;
 
   const expenseId = generateId();
-  await db.insert(expenses).values({
-    id: expenseId,
-    groupId,
-    description,
-    amount: Math.round(amount * 100) / 100,
-    paidById,
-    splitType,
-    date,
-  });
+  const roundedAmount = Math.round(amount * 100) / 100;
+  const redirectPath = buildCreateRedirectPath(actionKind, { groupId });
 
-  await db.insert(expenseSplits).values(
-    splits.map((s) => ({ id: generateId(), expenseId, ...s }))
-  );
+  if (submissionToken && (await replayExistingCreateAction(user.id, actionKind, submissionToken))) {
+    return;
+  }
 
-  revalidatePath(`/groups/${groupId}`);
-  redirect(`/groups/${groupId}`);
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(expenses).values({
+        id: expenseId,
+        groupId,
+        description,
+        amount: roundedAmount,
+        paidById,
+        splitType,
+        date,
+      });
+
+      await tx.insert(expenseSplits).values(
+        splits.map((split) => ({ id: generateId(), expenseId, ...split }))
+      );
+
+      if (submissionToken) {
+        await tx.insert(idempotentSubmissions).values({
+          id: generateId(),
+          userId: user.id,
+          actionKind,
+          submissionToken,
+          redirectPath,
+        });
+      }
+    });
+  } catch (error) {
+    if (
+      submissionToken &&
+      isUniqueConstraintError(error) &&
+      (await replayExistingCreateAction(user.id, actionKind, submissionToken))
+    ) {
+      return;
+    }
+
+    throw error;
+  }
+
+  finishCreateAction(actionKind, redirectPath);
 }
 
 export async function updateExpense(groupId: string, expenseId: string, formData: FormData) {
@@ -218,32 +376,67 @@ export async function deleteExpense(groupId: string, expenseId: string) {
 // ─── Settlements ─────────────────────────────────────────────────────────────
 
 export async function createSettlement(groupId: string, formData: FormData) {
-  await requireGroupAccess(groupId);
+  const { user } = await requireGroupAccess(groupId);
   const paidById = formData.get("paidById") as string;
   const paidToId = formData.get("paidToId") as string;
   const amount = parseFloat(formData.get("amount") as string);
   const note = (formData.get("note") as string)?.trim() || null;
   const date = formData.get("date") as string;
+  const redirectTo = getSettleRedirectTarget(groupId, formData.get("redirectTo"));
+  const actionKind = "createSettlement" as const;
+  const submissionToken = readSubmissionToken(formData);
 
   if (!paidById || !paidToId || paidById === paidToId || isNaN(amount) || amount <= 0 || !date)
     return;
 
-  await db.insert(settlements).values({
-    id: generateId(),
-    groupId,
-    paidById,
-    paidToId,
-    amount: Math.round(amount * 100) / 100,
-    note,
-    reversalOfSettlementId: null,
-    date,
-  });
+  if (submissionToken && (await replayExistingCreateAction(user.id, actionKind, submissionToken))) {
+    return;
+  }
 
-  revalidatePath(`/groups/${groupId}`);
-  redirect(`/groups/${groupId}/settle`);
+  const redirectPath =
+    redirectTo === `/groups/${groupId}/settle`
+      ? buildCreateRedirectPath(actionKind, { groupId })
+      : redirectTo;
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(settlements).values({
+        id: generateId(),
+        groupId,
+        paidById,
+        paidToId,
+        amount: Math.round(amount * 100) / 100,
+        note,
+        reversalOfSettlementId: null,
+        date,
+      });
+
+      if (submissionToken) {
+        await tx.insert(idempotentSubmissions).values({
+          id: generateId(),
+          userId: user.id,
+          actionKind,
+          submissionToken,
+          redirectPath,
+        });
+      }
+    });
+  } catch (error) {
+    if (
+      submissionToken &&
+      isUniqueConstraintError(error) &&
+      (await replayExistingCreateAction(user.id, actionKind, submissionToken))
+    ) {
+      return;
+    }
+
+    throw error;
+  }
+
+  finishCreateAction(actionKind, redirectPath);
 }
 
-export async function reverseSettlement(groupId: string, settlementId: string) {
+export async function reverseSettlement(groupId: string, settlementId: string, redirectTo?: string) {
   await requireGroupAccess(groupId);
   const original = await db.query.settlements.findFirst({
     where: and(
@@ -270,5 +463,17 @@ export async function reverseSettlement(groupId: string, settlementId: string) {
     date: today(),
   });
   revalidatePath(`/groups/${groupId}/settle`);
-  redirect(`/groups/${groupId}/settle`);
+  redirect(getSettleRedirectTarget(groupId, redirectTo));
+}
+
+function getSettleRedirectTarget(groupId: string, candidate: FormDataEntryValue | string | null | undefined) {
+  const defaultTarget = `/groups/${groupId}/settle`;
+
+  if (typeof candidate !== "string" || candidate.length === 0) {
+    return defaultTarget;
+  }
+
+  return candidate.startsWith(`${defaultTarget}?activity=`) || candidate === defaultTarget
+    ? candidate
+    : defaultTarget;
 }
