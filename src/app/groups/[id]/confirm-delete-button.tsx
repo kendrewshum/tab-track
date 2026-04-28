@@ -1,10 +1,12 @@
 "use client";
 
 import { ReactNode } from "react";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 
 interface ConfirmDeleteButtonProps {
   action: () => Promise<void>;
   message: string;
+  pendingLabel: ReactNode;
   className?: string;
   title?: string;
   children: ReactNode;
@@ -13,14 +15,15 @@ interface ConfirmDeleteButtonProps {
 export function ConfirmDeleteButton({
   action,
   message,
+  pendingLabel,
   className,
   title,
   children,
 }: ConfirmDeleteButtonProps) {
   return (
     <form action={action}>
-      <button
-        type="submit"
+      <PendingSubmitButton
+        pendingLabel={pendingLabel}
         className={className}
         title={title}
         onClick={(e) => {
@@ -30,7 +33,7 @@ export function ConfirmDeleteButton({
         }}
       >
         {children}
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }

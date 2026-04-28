@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createExpense, updateExpense } from "@/app/actions";
+import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { computeSplits } from "@/lib/splits";
 import { formatCurrency, today } from "@/lib/format";
 
@@ -18,18 +19,50 @@ type ExistingExpense = {
   splits: { memberId: string; amount: number }[];
 };
 
+type CreateExpenseFormProps = {
+  groupId: string;
+  members: Member[];
+  submissionToken: string;
+  expense?: undefined;
+};
+
+type EditExpenseFormProps = {
+  groupId: string;
+  members: Member[];
+  expense: ExistingExpense;
+  submissionToken?: never;
+};
+
 export function ExpenseForm({
   groupId,
   members,
   expense,
-}: {
-  groupId: string;
-  members: Member[];
-  expense?: ExistingExpense;
-}) {
+  submissionToken: initialSubmissionToken,
+}: CreateExpenseFormProps | EditExpenseFormProps) {
   const editing = !!expense;
   const total = expense?.amount ?? 0;
   const paidByFieldId = "paid-by";
+  const [submissionToken, setSubmissionToken] = useState(initialSubmissionToken);
+
+  useEffect(() => {
+    if (editing) {
+      return;
+    }
+
+    const rotateToken = () => setSubmissionToken(crypto.randomUUID());
+
+    const refreshToken = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        rotateToken();
+      }
+    };
+
+    window.addEventListener("pageshow", refreshToken);
+
+    return () => {
+      window.removeEventListener("pageshow", refreshToken);
+    };
+  }, [editing]);
 
   const [amount, setAmount] = useState(editing ? String(expense.amount) : "");
   const [paidById, setPaidById] = useState(editing ? expense.paidById : (members[0]?.id ?? ""));
@@ -113,6 +146,9 @@ export function ExpenseForm({
 
   return (
     <form action={action} className="space-y-5">
+      {!editing && submissionToken && (
+        <input type="hidden" name="_submissionToken" value={submissionToken} />
+      )}
       {/* Description */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
@@ -323,13 +359,13 @@ export function ExpenseForm({
         </div>
       )}
 
-      <button
-        type="submit"
+      <PendingSubmitButton
         disabled={!isValid}
+        pendingLabel={editing ? "Saving..." : "Adding..."}
         className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {editing ? "Save Changes" : "Add Expense"}
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }

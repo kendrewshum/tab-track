@@ -20,6 +20,123 @@ test.describe("Group management", () => {
     await expect(page.getByText("2 members")).toBeVisible();
   });
 
+  test("double-clicking Create Group only creates one group", async ({ page }) => {
+    await signUpAndLogin(page);
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("One Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+
+    const submit = page.getByRole("button", { name: "Create Group" });
+    await submit.dblclick();
+
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: "One Cabin" })).toBeVisible();
+
+    await page.goto("/");
+    await expect(page.locator("a").filter({ hasText: "One Cabin" })).toHaveCount(1);
+  });
+
+  test("Create Group shows a pending state while submission is in flight", async ({ page }) => {
+    await signUpAndLogin(page);
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Pending Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+
+    let releaseSubmit: () => void;
+    const submitBlocked = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let sawSubmitRequest = false;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+
+      if (
+        !sawSubmitRequest &&
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/groups/new"
+      ) {
+        sawSubmitRequest = true;
+        await submitBlocked;
+      }
+
+      await route.continue();
+    });
+
+    const form = page.locator("form").filter({
+      has: page.getByPlaceholder("e.g. Tokyo Trip, Apartment"),
+    });
+    const submit = form.locator('button[type="submit"]');
+    const clickPromise = submit.click();
+
+    await expect.poll(() => sawSubmitRequest).toBe(true);
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveText("Creating...");
+
+    releaseSubmit!();
+    await clickPromise;
+
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+    await expect(page.getByRole("heading", { name: "Pending Cabin" })).toBeVisible();
+  });
+
+  test("legitimate second group create after revisiting the form is not replayed", async ({
+    page,
+  }) => {
+    await signUpAndLogin(page);
+
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("First Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Second Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+
+    await page.goto("/");
+    await expect(page.locator("a").filter({ hasText: "First Cabin" })).toHaveCount(1);
+    await expect(page.locator("a").filter({ hasText: "Second Cabin" })).toHaveCount(1);
+  });
+
+  test("legitimate group create from a restored form gets a fresh token", async ({
+    page,
+  }) => {
+    await signUpAndLogin(page);
+
+    await page.goto("/groups/new");
+    const firstToken = await page.locator('input[name="_submissionToken"]').inputValue();
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Back Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+
+    await page.goto("/");
+    await expect(page).toHaveURL("/");
+
+    await page.goBack();
+    await expect(page).toHaveURL("/groups/new");
+    await page.waitForFunction((token) => {
+      const input = document.querySelector<HTMLInputElement>('input[name="_submissionToken"]');
+      return input ? input.value !== token : false;
+    }, firstToken);
+
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Back Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+
+    await page.goto("/");
+    await expect(page.locator("a").filter({ hasText: "Back Cabin" })).toHaveCount(1);
+  });
+
   test("new group appears on the home page", async ({ page }) => {
     const id = await createTestGroup(page, "Barcelona Trip", ["Maria", "Carlos"]);
 
@@ -42,6 +159,66 @@ test.describe("Group management", () => {
         .locator("section")
         .filter({ has: page.getByRole("heading", { name: "Members" }) })
         .getByText("Carol", { exact: true })
+    ).toBeVisible();
+  });
+
+  test("double-clicking Add only adds one member", async ({ page }) => {
+    await createTestGroup(page, "Dinner Club Double Add", ["Alice", "Bob"]);
+
+    await page.getByPlaceholder("Add a member…").fill("Carol");
+    await page.getByRole("button", { name: "Add" }).dblclick();
+
+    await expect(page.getByText("3 members")).toBeVisible();
+    await expect(
+      page
+        .locator("section")
+        .filter({ has: page.getByRole("heading", { name: "Members" }) })
+        .getByText("Carol", { exact: true })
+    ).toHaveCount(1);
+  });
+
+  test("Add member shows a pending state while submission is in flight", async ({ page }) => {
+    const id = await createTestGroup(page, "Dinner Club Pending Add", ["Alice", "Bob"]);
+
+    await page.getByPlaceholder("Add a member…").fill("Carol");
+
+    let releaseSubmit: () => void;
+    const submitBlocked = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let sawSubmitRequest = false;
+
+    await page.route("**/*", async (route) => {
+      const request = route.request();
+
+      if (
+        !sawSubmitRequest &&
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === `/groups/${id}`
+      ) {
+        sawSubmitRequest = true;
+        await submitBlocked;
+      }
+
+      await route.continue();
+    });
+
+    const membersSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Members" }) });
+    const submit = membersSection.locator('button[type="submit"]');
+    const clickPromise = submit.click();
+
+    await expect.poll(() => sawSubmitRequest).toBe(true);
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveText("Adding...");
+
+    releaseSubmit!();
+    await clickPromise;
+
+    await expect(page.getByText("3 members")).toBeVisible();
+    await expect(
+      membersSection.getByText("Carol", { exact: true })
     ).toBeVisible();
   });
 
