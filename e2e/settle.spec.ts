@@ -156,12 +156,17 @@ test.describe("Settle up", () => {
       await page.getByRole("button", { name: "Add Expense" }).click();
     }
 
-    await page.goto(`/groups/${id}`);
-
     const activitySection = page
       .locator("section")
       .filter({ has: page.getByRole("heading", { name: "Activity", exact: true }) });
 
+    await page.goto(`/groups/${id}?activity=40.5`);
+    await expect(activitySection.getByText("Expense 21")).toBeVisible();
+    await expect(activitySection.getByText("Expense 02")).toBeVisible();
+    await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
+    await expect(activitySection.getByRole("link", { name: "Load more activity" })).toBeVisible();
+
+    await page.goto(`/groups/${id}?activity=40xyz`);
     await expect(activitySection.getByText("Expense 21")).toBeVisible();
     await expect(activitySection.getByText("Expense 02")).toBeVisible();
     await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
@@ -176,7 +181,8 @@ test.describe("Settle up", () => {
     await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
     await expect(activitySection.getByText("Expense 01")).toBeVisible();
 
-    await page.goto(`/groups/${id}/settle`);
+    await page.getByRole("link", { name: /Settle up/i }).click();
+    await expect(page).toHaveURL(`/groups/${id}/settle`);
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
     await expect(activitySection.getByText("Expense 01")).toBeVisible();

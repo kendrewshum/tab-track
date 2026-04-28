@@ -411,10 +411,9 @@ export default async function GroupPage({
 
 function parseActivityCountSearchParam(value: string | string[] | undefined): number | undefined {
   const normalized = Array.isArray(value) ? value[0] : value;
-  if (normalized === undefined) {
+  if (normalized === undefined || !/^\d+$/.test(normalized)) {
     return undefined;
   }
 
-  const parsed = Number.parseInt(normalized, 10);
-  return Number.isNaN(parsed) ? undefined : parsed;
+  return Number.parseInt(normalized, 10);
 }
