@@ -10,7 +10,12 @@ import { expenseRevisions, expenseSplits, expenses, groups, members, settlements
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireGroupAccess } from "@/lib/server/session";
-import { buildActivityEvents, getPostSettlementEditedExpenseIds } from "@/lib/history";
+import {
+  buildActivityArchive,
+  buildActivityEvents,
+  getActivityVisibleCount,
+  getPostSettlementEditedExpenseIds,
+} from "@/lib/history";
 import { addMember, deleteExpense } from "@/app/actions";
 import { generateId } from "@/lib/utils";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
@@ -26,10 +31,12 @@ type ExpenseRevisionRow = typeof expenseRevisions.$inferSelect;
 
 export default async function GroupPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ activity?: string | string[] }>;
 }) {
-  const { id } = await params;
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
@@ -99,6 +106,17 @@ export default async function GroupPage({
     revisions: groupExpenseRevisions,
     settlements: groupSettlements,
   });
+  const requestedActivityCount = parseActivityCountSearchParam(resolvedSearchParams.activity);
+  const visibleActivityCount = getActivityVisibleCount(requestedActivityCount);
+  const {
+    visibleItems: visibleActivityEvents,
+    hasMore: hasMoreActivity,
+    nextVisibleCount: nextActivityVisibleCount,
+  } = buildActivityArchive(activityEvents, visibleActivityCount);
+  const settlePageHref =
+    requestedActivityCount === undefined
+      ? `/groups/${id}/settle`
+      : `/groups/${id}/settle?activity=${visibleActivityCount}`;
 
   const addMemberAction = addMember.bind(null, id);
   const addMemberSubmissionToken = generateId();
@@ -131,7 +149,7 @@ export default async function GroupPage({
           <h2 className="font-semibold text-slate-900">Balances</h2>
           {debts.length > 0 && (
             <Link
-              href={`/groups/${id}/settle`}
+              href={settlePageHref}
               className="flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
             >
               Settle up <ArrowRight size={14} />
@@ -273,7 +291,7 @@ export default async function GroupPage({
           </div>
         ) : (
           <div className="space-y-2">
-            {activityEvents.map((event) => (
+            {visibleActivityEvents.map((event) => (
               <div
                 key={event.id}
                 className="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-1"
@@ -343,6 +361,14 @@ export default async function GroupPage({
                 )}
               </div>
             ))}
+            {hasMoreActivity && (
+              <Link
+                href={`/groups/${id}?activity=${nextActivityVisibleCount}`}
+                className="inline-flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
+              >
+                Load more activity
+              </Link>
+            )}
           </div>
         )}
       </section>
@@ -389,4 +415,16 @@ export default async function GroupPage({
       </section>
     </div>
   );
+}
+
+function parseActivityCountSearchParam(value: string | string[] | undefined): number | undefined {
+  if (Array.isArray(value)) {
+    return undefined;
+  }
+
+  if (value === undefined || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+
+  return Number.parseInt(value, 10);
 }

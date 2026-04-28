@@ -9,7 +9,7 @@ import { expenseRevisions, expenseSplits, expenses, groups, members, settlements
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate, today } from "@/lib/format";
 import { requireGroupAccess } from "@/lib/server/session";
-import { hasExpenseEditsAfterSettlementStarted } from "@/lib/history";
+import { getActivityVisibleCount, hasExpenseEditsAfterSettlementStarted } from "@/lib/history";
 import { generateId } from "@/lib/utils";
 import { createSettlement, reverseSettlement } from "@/app/actions";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
@@ -23,10 +23,12 @@ type ExpenseRevisionRow = typeof expenseRevisions.$inferSelect;
 
 export default async function SettlePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ activity?: string | string[] }>;
 }) {
-  const { id } = await params;
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
@@ -86,6 +88,19 @@ export default async function SettlePage({
   const settlementActivity = [...groupSettlements].sort((a, b) =>
     a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
   );
+  const requestedActivityCount = parseActivityCountSearchParam(resolvedSearchParams.activity);
+  const normalizedActivityCount =
+    requestedActivityCount === undefined
+      ? undefined
+      : getActivityVisibleCount(requestedActivityCount);
+  const groupPageHref =
+    normalizedActivityCount === undefined
+      ? `/groups/${id}`
+      : `/groups/${id}?activity=${normalizedActivityCount}`;
+  const settlePageHref =
+    normalizedActivityCount === undefined
+      ? `/groups/${id}/settle`
+      : `/groups/${id}/settle?activity=${normalizedActivityCount}`;
 
   const settleAction = createSettlement.bind(null, id);
   const manualSettlementSubmissionToken = generateId();
@@ -93,7 +108,7 @@ export default async function SettlePage({
   return (
     <div className="space-y-6">
       <div>
-        <Link href={`/groups/${id}`} className="text-sm text-green-600 hover:text-green-700">
+        <Link href={groupPageHref} className="text-sm text-green-600 hover:text-green-700">
           ← {group.name}
         </Link>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">Settle Up</h1>
@@ -137,6 +152,7 @@ export default async function SettlePage({
                   <input type="hidden" name="paidToId" value={debt.toId} />
                   <input type="hidden" name="amount" value={debt.amount} />
                   <input type="hidden" name="date" value={today()} />
+                  <input type="hidden" name="redirectTo" value={settlePageHref} />
                   <PendingSubmitButton
                     pendingLabel="Recording..."
                     className="w-full py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
@@ -157,11 +173,13 @@ export default async function SettlePage({
           action={settleAction}
           className="bg-white border border-slate-200 rounded-xl p-4 space-y-3"
         >
+          <input type="hidden" name="redirectTo" value={settlePageHref} />
           <input
             type="hidden"
             name="_submissionToken"
             value={manualSettlementSubmissionToken}
           />
+          <input type="hidden" name="redirectTo" value={settlePageHref} />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">From</label>
@@ -271,7 +289,7 @@ export default async function SettlePage({
                 </div>
                 {!s.reversalOfSettlementId && !reversedSettlementIds.has(s.id) && (
                   <ConfirmDeleteButton
-                    action={reverseSettlement.bind(null, id, s.id)}
+                    action={reverseSettlement.bind(null, id, s.id, settlePageHref)}
                     message="Record a reversing payment for this entry?"
                     pendingLabel="Reversing..."
                     className="text-sm text-amber-700 hover:text-amber-800 font-medium transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
@@ -287,4 +305,16 @@ export default async function SettlePage({
       )}
     </div>
   );
+}
+
+function parseActivityCountSearchParam(value: string | string[] | undefined): number | undefined {
+  if (Array.isArray(value)) {
+    return undefined;
+  }
+
+  if (value === undefined || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+
+  return Number.parseInt(value, 10);
 }

@@ -382,6 +382,7 @@ export async function createSettlement(groupId: string, formData: FormData) {
   const amount = parseFloat(formData.get("amount") as string);
   const note = (formData.get("note") as string)?.trim() || null;
   const date = formData.get("date") as string;
+  const redirectTo = getSettleRedirectTarget(groupId, formData.get("redirectTo"));
   const actionKind = "createSettlement" as const;
   const submissionToken = readSubmissionToken(formData);
 
@@ -392,7 +393,10 @@ export async function createSettlement(groupId: string, formData: FormData) {
     return;
   }
 
-  const redirectPath = buildCreateRedirectPath(actionKind, { groupId });
+  const redirectPath =
+    redirectTo === `/groups/${groupId}/settle`
+      ? buildCreateRedirectPath(actionKind, { groupId })
+      : redirectTo;
 
   try {
     await db.transaction(async (tx) => {
@@ -432,7 +436,7 @@ export async function createSettlement(groupId: string, formData: FormData) {
   finishCreateAction(actionKind, redirectPath);
 }
 
-export async function reverseSettlement(groupId: string, settlementId: string) {
+export async function reverseSettlement(groupId: string, settlementId: string, redirectTo?: string) {
   await requireGroupAccess(groupId);
   const original = await db.query.settlements.findFirst({
     where: and(
@@ -459,5 +463,17 @@ export async function reverseSettlement(groupId: string, settlementId: string) {
     date: today(),
   });
   revalidatePath(`/groups/${groupId}/settle`);
-  redirect(`/groups/${groupId}/settle`);
+  redirect(getSettleRedirectTarget(groupId, redirectTo));
+}
+
+function getSettleRedirectTarget(groupId: string, candidate: FormDataEntryValue | string | null | undefined) {
+  const defaultTarget = `/groups/${groupId}/settle`;
+
+  if (typeof candidate !== "string" || candidate.length === 0) {
+    return defaultTarget;
+  }
+
+  return candidate.startsWith(`${defaultTarget}?activity=`) || candidate === defaultTarget
+    ? candidate
+    : defaultTarget;
 }

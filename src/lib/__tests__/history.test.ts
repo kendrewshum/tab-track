@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_ACTIVITY_CHUNK_SIZE,
+  buildActivityArchive,
   buildActivityEvents,
   createExpenseSnapshot,
+  getActivityVisibleCount,
   getPostSettlementEditedExpenseIds,
   hasExpenseEditsAfterSettlementStarted,
   parseExpenseSnapshot,
@@ -139,6 +142,132 @@ describe("buildActivityEvents", () => {
       expenseId: "expense-1",
       before: { description: "Cab", amount: 24 },
       after: { description: "Cab + toll", amount: 30 },
+    });
+  });
+
+  it("uses business dates and event ids to break same-second timestamp ties deterministically", () => {
+    const events = buildActivityEvents({
+      expenses: [
+        {
+          id: "expense-b",
+          description: "Later expense",
+          amount: 24,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-22",
+          createdAt: "2026-04-23 09:30:00",
+        },
+        {
+          id: "expense-a",
+          description: "Earlier expense",
+          amount: 24,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-21",
+          createdAt: "2026-04-23 09:30:00",
+        },
+      ],
+      revisions: [
+        {
+          id: "revision-a",
+          expenseId: "expense-c",
+          beforeSnapshot: serializeExpenseSnapshot({
+            description: "Snack",
+            amount: 8,
+            paidById: "alice",
+            splitType: "equal",
+            date: "2026-04-22",
+            splits: [
+              { memberId: "alice", amount: 4 },
+              { memberId: "bob", amount: 4 },
+            ],
+          }),
+          afterSnapshot: serializeExpenseSnapshot({
+            description: "Snack + tip",
+            amount: 10,
+            paidById: "alice",
+            splitType: "equal",
+            date: "2026-04-23",
+            splits: [
+              { memberId: "alice", amount: 5 },
+              { memberId: "bob", amount: 5 },
+            ],
+          }),
+          createdAt: "2026-04-23 09:30:00",
+        },
+      ],
+      settlements: [
+        {
+          id: "settlement-b",
+          paidById: "bob",
+          paidToId: "alice",
+          amount: 12,
+          note: "Later payment",
+          date: "2026-04-24",
+          createdAt: "2026-04-23 09:30:00",
+          reversalOfSettlementId: null,
+        },
+        {
+          id: "settlement-a",
+          paidById: "bob",
+          paidToId: "alice",
+          amount: 12,
+          note: "Same date, smaller id",
+          date: "2026-04-24",
+          createdAt: "2026-04-23 09:30:00",
+          reversalOfSettlementId: null,
+        },
+      ],
+    });
+
+    expect(events.map((event) => event.id)).toEqual([
+      "settlement-settlement-b",
+      "settlement-settlement-a",
+      "expense-edited-revision-a",
+      "expense-created-expense-b",
+      "expense-created-expense-a",
+    ]);
+  });
+});
+
+describe("getActivityVisibleCount", () => {
+  it("falls back to the default chunk size for missing, invalid, or undersized values", () => {
+    expect(getActivityVisibleCount(undefined)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(Number.NaN)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(0)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(19)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+  });
+
+  it("snaps valid values up to the next chunk boundary", () => {
+    expect(getActivityVisibleCount(20)).toBe(20);
+    expect(getActivityVisibleCount(21)).toBe(40);
+    expect(getActivityVisibleCount(41)).toBe(60);
+  });
+
+  it("treats decimal numeric values as invalid input", () => {
+    expect(getActivityVisibleCount(20.5)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+    expect(getActivityVisibleCount(Number.NaN)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
+  });
+});
+
+describe("buildActivityArchive", () => {
+  it("returns the leading slice and the next visible count when older items remain", () => {
+    const items = Array.from({ length: 25 }, (_, index) => ({ id: `event-${index + 1}` }));
+
+    expect(buildActivityArchive(items, 20)).toEqual({
+      visibleItems: items.slice(0, 20),
+      hasMore: true,
+      nextVisibleCount: 40,
+    });
+  });
+
+  it("returns the full slice when the archive fits within the visible window", () => {
+    const items = Array.from({ length: 12 }, (_, index) => ({ id: `event-${index + 1}` }));
+
+    expect(buildActivityArchive(items, 20)).toEqual({
+      visibleItems: items,
+      hasMore: false,
+      nextVisibleCount: 40,
     });
   });
 });
