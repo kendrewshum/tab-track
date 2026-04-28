@@ -160,8 +160,8 @@ describe("getActivityVisibleCount", () => {
     expect(getActivityVisibleCount(41)).toBe(60);
   });
 
-  it("snaps decimal numeric values up to the next chunk boundary", () => {
-    expect(getActivityVisibleCount(20.5)).toBe(40);
+  it("treats decimal numeric values as invalid input", () => {
+    expect(getActivityVisibleCount(20.5)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
     expect(getActivityVisibleCount(Number.NaN)).toBe(DEFAULT_ACTIVITY_CHUNK_SIZE);
   });
 });

@@ -90,7 +90,7 @@ export function getActivityVisibleCount(
   requestedCount: number | undefined,
   chunkSize = DEFAULT_ACTIVITY_CHUNK_SIZE
 ): number {
-  if (!Number.isFinite(requestedCount) || requestedCount < chunkSize) {
+  if (!Number.isFinite(requestedCount) || !Number.isInteger(requestedCount) || requestedCount < chunkSize) {
     return chunkSize;
   }
 
