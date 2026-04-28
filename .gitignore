@@ -27,3 +27,6 @@ e2e-test.db-wal
 .DS_Store
 *.pem
 *.tsbuildinfo
+
+# local planning/spec artifacts
+docs/superpowers/

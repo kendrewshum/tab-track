@@ -6,9 +6,19 @@ import { Plus, ArrowRight, Pencil } from "lucide-react";
 import { eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
-import { expenseRevisions, expenseSplits, expenses, groups, members, settlements } from "@/db/schema";
+import {
+  expenseRevisions,
+  expenseSplits,
+  expenses,
+  groupAccess,
+  groups,
+  members,
+  settlements,
+  users,
+} from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { buildGroupShareList } from "@/lib/group-shares";
 import { requireGroupAccess } from "@/lib/server/session";
 import { buildActivityEvents, getPostSettlementEditedExpenseIds } from "@/lib/history";
 import { addMember, deleteExpense } from "@/app/actions";
@@ -46,6 +56,21 @@ export default async function GroupPage({
       .orderBy(expenses.date),
     db.select().from(settlements).where(eq(settlements.groupId, id)),
   ]);
+  const sharedUsers = buildGroupShareList(
+    (
+      await db
+        .select({
+          email: users.email,
+          role: groupAccess.role,
+        })
+        .from(groupAccess)
+        .innerJoin(users, eq(groupAccess.userId, users.id))
+        .where(eq(groupAccess.groupId, id))
+    ).map((share) => ({
+      email: share.email,
+      role: share.role,
+    }))
+  );
 
   const expenseIds = groupExpenses.map((expense) => expense.id);
   const [groupExpenseSplits, groupExpenseRevisions]: [ExpenseSplitRow[], ExpenseRevisionRow[]] =
@@ -375,6 +400,16 @@ export default async function GroupPage({
             Share this group with friends who already created an account.
           </p>
           <InviteUserForm groupId={id} />
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <h3 className="text-sm font-medium text-slate-900">Shared with</h3>
+            <div className="mt-2 space-y-2">
+              {sharedUsers.map((sharedUser) => (
+                <p key={sharedUser.email} className="text-sm text-slate-600">
+                  {sharedUser.email}
+                </p>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
