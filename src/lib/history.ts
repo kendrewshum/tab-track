@@ -90,6 +90,10 @@ export function getActivityVisibleCount(
   requestedCount: number | undefined,
   chunkSize = DEFAULT_ACTIVITY_CHUNK_SIZE
 ): number {
+  if (requestedCount === undefined) {
+    return chunkSize;
+  }
+
   if (!Number.isFinite(requestedCount) || !Number.isInteger(requestedCount) || requestedCount < chunkSize) {
     return chunkSize;
   }
@@ -161,7 +165,19 @@ export function buildActivityEvents({
     }),
   ];
 
-  return events.sort((a, b) => toTimestampMs(b.occurredAt) - toTimestampMs(a.occurredAt));
+  return events.sort((a, b) => {
+    const occurredAtDifference = toTimestampMs(b.occurredAt) - toTimestampMs(a.occurredAt);
+    if (occurredAtDifference !== 0) {
+      return occurredAtDifference;
+    }
+
+    const businessDateDifference = toTimestampMs(getActivitySortDate(b)) - toTimestampMs(getActivitySortDate(a));
+    if (businessDateDifference !== 0) {
+      return businessDateDifference;
+    }
+
+    return b.id.localeCompare(a.id);
+  });
 }
 
 export function hasExpenseEditsAfterSettlementStarted(
@@ -191,4 +207,16 @@ export function getPostSettlementEditedExpenseIds(
 function toTimestampMs(value: string): number {
   const normalized = value.includes("T") ? value : value.replace(" ", "T");
   return new Date(normalized).getTime();
+}
+
+function getActivitySortDate(event: ActivityEvent): string {
+  switch (event.type) {
+    case "expense_created":
+      return event.expense.date;
+    case "expense_edited":
+      return event.after.date;
+    case "settlement_recorded":
+    case "settlement_reversed":
+      return event.date;
+  }
 }

@@ -144,6 +144,90 @@ describe("buildActivityEvents", () => {
       after: { description: "Cab + toll", amount: 30 },
     });
   });
+
+  it("uses business dates and event ids to break same-second timestamp ties deterministically", () => {
+    const events = buildActivityEvents({
+      expenses: [
+        {
+          id: "expense-b",
+          description: "Later expense",
+          amount: 24,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-22",
+          createdAt: "2026-04-23 09:30:00",
+        },
+        {
+          id: "expense-a",
+          description: "Earlier expense",
+          amount: 24,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-21",
+          createdAt: "2026-04-23 09:30:00",
+        },
+      ],
+      revisions: [
+        {
+          id: "revision-a",
+          expenseId: "expense-c",
+          beforeSnapshot: serializeExpenseSnapshot({
+            description: "Snack",
+            amount: 8,
+            paidById: "alice",
+            splitType: "equal",
+            date: "2026-04-22",
+            splits: [
+              { memberId: "alice", amount: 4 },
+              { memberId: "bob", amount: 4 },
+            ],
+          }),
+          afterSnapshot: serializeExpenseSnapshot({
+            description: "Snack + tip",
+            amount: 10,
+            paidById: "alice",
+            splitType: "equal",
+            date: "2026-04-23",
+            splits: [
+              { memberId: "alice", amount: 5 },
+              { memberId: "bob", amount: 5 },
+            ],
+          }),
+          createdAt: "2026-04-23 09:30:00",
+        },
+      ],
+      settlements: [
+        {
+          id: "settlement-b",
+          paidById: "bob",
+          paidToId: "alice",
+          amount: 12,
+          note: "Later payment",
+          date: "2026-04-24",
+          createdAt: "2026-04-23 09:30:00",
+          reversalOfSettlementId: null,
+        },
+        {
+          id: "settlement-a",
+          paidById: "bob",
+          paidToId: "alice",
+          amount: 12,
+          note: "Same date, smaller id",
+          date: "2026-04-24",
+          createdAt: "2026-04-23 09:30:00",
+          reversalOfSettlementId: null,
+        },
+      ],
+    });
+
+    expect(events.map((event) => event.id)).toEqual([
+      "settlement-settlement-b",
+      "settlement-settlement-a",
+      "expense-edited-revision-a",
+      "expense-created-expense-b",
+      "expense-created-expense-a",
+    ]);
+  });
 });
 
 describe("getActivityVisibleCount", () => {

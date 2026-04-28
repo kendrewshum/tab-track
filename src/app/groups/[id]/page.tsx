@@ -10,7 +10,12 @@ import { expenseRevisions, expenseSplits, expenses, groups, members, settlements
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireGroupAccess } from "@/lib/server/session";
-import { buildActivityEvents, getPostSettlementEditedExpenseIds } from "@/lib/history";
+import {
+  buildActivityArchive,
+  buildActivityEvents,
+  getActivityVisibleCount,
+  getPostSettlementEditedExpenseIds,
+} from "@/lib/history";
 import { addMember, deleteExpense } from "@/app/actions";
 import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
@@ -24,10 +29,12 @@ type ExpenseRevisionRow = typeof expenseRevisions.$inferSelect;
 
 export default async function GroupPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ activity?: string | string[] }>;
 }) {
-  const { id } = await params;
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   await requireGroupAccess(id);
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
@@ -97,6 +104,14 @@ export default async function GroupPage({
     revisions: groupExpenseRevisions,
     settlements: groupSettlements,
   });
+  const visibleActivityCount = getActivityVisibleCount(
+    parseActivityCountSearchParam(resolvedSearchParams.activity)
+  );
+  const {
+    visibleItems: visibleActivityEvents,
+    hasMore: hasMoreActivity,
+    nextVisibleCount: nextActivityVisibleCount,
+  } = buildActivityArchive(activityEvents, visibleActivityCount);
 
   const addMemberAction = addMember.bind(null, id);
 
@@ -269,7 +284,7 @@ export default async function GroupPage({
           </div>
         ) : (
           <div className="space-y-2">
-            {activityEvents.map((event) => (
+            {visibleActivityEvents.map((event) => (
               <div
                 key={event.id}
                 className="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-1"
@@ -339,6 +354,14 @@ export default async function GroupPage({
                 )}
               </div>
             ))}
+            {hasMoreActivity && (
+              <Link
+                href={`/groups/${id}?activity=${nextActivityVisibleCount}`}
+                className="inline-flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
+              >
+                Load more activity
+              </Link>
+            )}
           </div>
         )}
       </section>
@@ -384,4 +407,14 @@ export default async function GroupPage({
       </section>
     </div>
   );
+}
+
+function parseActivityCountSearchParam(value: string | string[] | undefined): number | undefined {
+  const normalized = Array.isArray(value) ? value[0] : value;
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
 }

@@ -142,6 +142,46 @@ test.describe("Settle up", () => {
     await expect(activitySection.getByText("Boat").first()).toBeVisible();
   });
 
+  test("activity archive shows the newest chunk first and preserves load more state", async ({ page }) => {
+    const id = await createTestGroup(page, "E2E Activity Archive", ["Alice", "Bob"]);
+
+    for (let index = 1; index <= 21; index += 1) {
+      const date = `2026-01-${String(index).padStart(2, "0")}`;
+      await fillExpenseBase(page, id, {
+        description: `Expense ${String(index).padStart(2, "0")}`,
+        amount: "10",
+        paidBy: "Alice",
+      });
+      await page.locator("input[name='date']").fill(date);
+      await page.getByRole("button", { name: "Add Expense" }).click();
+    }
+
+    await page.goto(`/groups/${id}`);
+
+    const activitySection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Activity", exact: true }) });
+
+    await expect(activitySection.getByText("Expense 21")).toBeVisible();
+    await expect(activitySection.getByText("Expense 02")).toBeVisible();
+    await expect(activitySection.getByText("Expense 01")).toHaveCount(0);
+
+    await activitySection.getByRole("link", { name: "Load more activity" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
+    await expect(activitySection.getByText("Expense 01")).toBeVisible();
+    await expect(activitySection.getByRole("link", { name: "Load more activity" })).toHaveCount(0);
+
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
+    await expect(activitySection.getByText("Expense 01")).toBeVisible();
+
+    await page.goto(`/groups/${id}/settle`);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/groups/${id}\\?activity=40$`));
+    await expect(activitySection.getByText("Expense 01")).toBeVisible();
+  });
+
   test("can reverse a settlement record without erasing the original payment", async ({ page }) => {
     const id = await createTestGroup(page, "E2E Delete Settlement", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Taxi", amount: "10", paidBy: "Alice" });
