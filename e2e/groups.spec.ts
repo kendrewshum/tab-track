@@ -245,4 +245,31 @@ test.describe("Group management", () => {
     await expect(page).toHaveURL(/\/groups\/[^/]+$/);
     await expect(page.getByText("4 members")).toBeVisible();
   });
+
+  test("shows owner and shared account emails in app access", async ({ page, browser }) => {
+    const owner = await signUpAndLogin(page);
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Shared Cabin");
+    await page.getByPlaceholder("Member 1").fill("Alice");
+    await page.getByPlaceholder("Member 2").fill("Bob");
+    await page.getByRole("button", { name: "Create Group" }).click();
+
+    await expect(page).toHaveURL(/\/groups\/[^/]+$/);
+    await expect(page.getByText(owner.email)).toBeVisible();
+
+    const invitedContext = await browser.newContext();
+    const invitedPage = await invitedContext.newPage();
+    const invited = await signUpAndLogin(invitedPage);
+    await invitedContext.close();
+
+    await page.getByPlaceholder("friend@example.com").fill(invited.email);
+    await page.getByRole("button", { name: "Share Group" }).click();
+
+    const appAccessSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "App Access" }) });
+
+    await expect(page.getByText(`Shared with ${invited.email}.`)).toBeVisible();
+    await expect(appAccessSection.getByText(invited.email, { exact: true })).toBeVisible();
+  });
 });
