@@ -56,11 +56,13 @@ test.describe("Settle up", () => {
     // Exclude Carol from first expense (Alice and Bob only)
     await participantToggle("Carol").click();
     await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
 
     await fillExpenseBase(page, id, { description: "E2", amount: "10", paidBy: "Bob" });
     // Exclude Alice from second expense (Bob and Carol only)
     await participantToggle("Alice").click();
     await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${id}`);
 
     await page.goto(`/groups/${id}/settle`);
     const suggestedPayments = page

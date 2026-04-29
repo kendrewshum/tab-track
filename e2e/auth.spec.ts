@@ -84,6 +84,8 @@ test.describe("Authentication and legacy group access", () => {
     await expect(guestPage.getByRole("link", { name: /Shared Weekend/i })).toBeVisible();
     await guestPage.getByRole("link", { name: /Shared Weekend/i }).click();
     await expect(guestPage.getByRole("heading", { name: "Shared Weekend" })).toBeVisible();
+    await expect(guestPage.getByRole("heading", { name: "App Access" })).toHaveCount(0);
+    await expect(guestPage.getByRole("button", { name: "Delete group" })).toHaveCount(0);
     await guestPage.getByPlaceholder("Add a member…").fill("Late Joiner");
     await guestPage.getByRole("button", { name: "Add" }).click();
     await expect(
