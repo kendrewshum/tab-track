@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { isAuthSecretConfigured } from "@/lib/auth-config";
-import { findAuthorizedGroupAccess } from "@/lib/group-access";
+import { findAuthorizedGroupAccess, findAuthorizedGroupOwnerAccess } from "@/lib/group-access";
 import { findUserByEmail } from "@/lib/server/users";
 
 export type SessionUser = {
@@ -62,20 +62,7 @@ export async function requireUser(): Promise<SessionUser> {
 
 export async function requireGroupAccess(groupId: string) {
   const user = await requireUser();
-  const access = await findAuthorizedGroupAccess(
-    {
-      async findGroupAccess(userId, requestedGroupId) {
-        return (
-          (await db.query.groupAccess.findFirst({
-            where: (table, { and, eq: tableEq }) =>
-              and(tableEq(table.userId, userId), tableEq(table.groupId, requestedGroupId)),
-          })) ?? null
-        );
-      },
-    },
-    user.id,
-    groupId
-  );
+  const access = await findAuthorizedGroupAccess(groupAccessStore, user.id, groupId);
 
   if (!access) {
     notFound();
@@ -83,3 +70,25 @@ export async function requireGroupAccess(groupId: string) {
 
   return { user, access };
 }
+
+export async function requireGroupOwner(groupId: string) {
+  const user = await requireUser();
+  const access = await findAuthorizedGroupOwnerAccess(groupAccessStore, user.id, groupId);
+
+  if (!access) {
+    notFound();
+  }
+
+  return { user, access };
+}
+
+const groupAccessStore = {
+  async findGroupAccess(userId: string, requestedGroupId: string) {
+    return (
+      (await db.query.groupAccess.findFirst({
+        where: (table, { and, eq: tableEq }) =>
+          and(tableEq(table.userId, userId), tableEq(table.groupId, requestedGroupId)),
+      })) ?? null
+    );
+  },
+};

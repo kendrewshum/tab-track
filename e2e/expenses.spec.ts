@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createTestGroup, fillExpenseBase } from "./helpers";
+import { extractCreatedGroupId } from "../src/lib/group-url";
 
 // Tests the full expense-entry flow: form submission with all four split
 // modes, correct balance display, and expense deletion.
@@ -111,6 +112,65 @@ test.describe("Adding expenses – equal split", () => {
     await expect(expensesSection.getByText("Hotel")).toBeVisible();
     await expect(expensesSection.getByText("$120.00", { exact: true })).toBeVisible();
     await expect(expensesSection.getByText(/Paid by Alice/)).toBeVisible();
+  });
+
+  test("rejects tampered expense member IDs from another group", async ({ page }) => {
+    const targetGroupId = await createTestGroup(page, "Tamper Target", ["Alice", "Bob"]);
+
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Tamper Source");
+    await page.getByPlaceholder("Member 1").fill("Mallory");
+    await page.getByPlaceholder("Member 2").fill("Eve");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await page.waitForURL((url) => extractCreatedGroupId(url.toString()) !== null);
+    const sourceGroupId = extractCreatedGroupId(page.url());
+    if (!sourceGroupId) {
+      throw new Error(`Expected source group URL, got ${page.url()}`);
+    }
+
+    await page.goto(`/groups/${sourceGroupId}/expenses/new`);
+    await expect(page.getByRole("heading", { name: "Add Expense" })).toBeVisible();
+    const otherGroupMemberId = await page
+      .locator("select[name='paidById'] option")
+      .first()
+      .getAttribute("value");
+    if (!otherGroupMemberId) {
+      throw new Error("Expected to read a member ID from the source group form.");
+    }
+
+    await fillExpenseBase(page, targetGroupId, {
+      description: "Injected Dinner",
+      amount: "10",
+      paidBy: "Alice",
+    });
+
+    await page.evaluate((memberId) => {
+      const form = document.querySelector("form");
+      const paidBySelect = document.querySelector<HTMLSelectElement>("select[name='paidById']");
+      if (!form || !paidBySelect) {
+        throw new Error("Expected expense form controls to be present.");
+      }
+
+      const option = document.createElement("option");
+      option.value = memberId;
+      option.textContent = "Mallory";
+      paidBySelect.append(option);
+      paidBySelect.value = memberId;
+
+      form.querySelectorAll("input[name='participants']").forEach((input) => input.remove());
+
+      const participant = document.createElement("input");
+      participant.type = "hidden";
+      participant.name = "participants";
+      participant.value = memberId;
+      form.append(participant);
+    }, otherGroupMemberId);
+
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${targetGroupId}/expenses/new`);
+
+    await page.goto(`/groups/${targetGroupId}`);
+    await expect(page.getByText("Injected Dinner", { exact: true })).toHaveCount(0);
   });
 
   test("can delete an expense and balances reset to zero", async ({ page }) => {

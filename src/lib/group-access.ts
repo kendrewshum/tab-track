@@ -15,3 +15,12 @@ export async function findAuthorizedGroupAccess(
 ): Promise<GroupAccessRecord | null> {
   return store.findGroupAccess(userId, groupId);
 }
+
+export async function findAuthorizedGroupOwnerAccess(
+  store: GroupAccessStore,
+  userId: string,
+  groupId: string
+): Promise<GroupAccessRecord | null> {
+  const access = await findAuthorizedGroupAccess(store, userId, groupId);
+  return access?.role === "owner" ? access : null;
+}

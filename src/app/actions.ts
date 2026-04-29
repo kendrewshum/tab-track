@@ -15,7 +15,7 @@ import {
   members,
   settlements,
 } from "@/db/schema";
-import { requireGroupAccess, requireUser } from "@/lib/server/session";
+import { requireGroupAccess, requireGroupOwner, requireUser } from "@/lib/server/session";
 import { formatDate, today } from "@/lib/format";
 import { createExpenseSnapshot, serializeExpenseSnapshot } from "@/lib/history";
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/lib/idempotency";
 import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
 import { generateId } from "@/lib/utils";
+import { areGroupMemberIds } from "@/lib/group-member-ids";
 
 async function findIdempotentSubmission(
   userId: string,
@@ -79,6 +80,19 @@ async function replayExistingCreateAction(
 
   finishCreateAction(actionKind, existingSubmission.redirectPath);
   return true;
+}
+
+async function getGroupMemberIdSet(groupId: string) {
+  const rows = await db.select({ id: members.id }).from(members).where(eq(members.groupId, groupId));
+  return new Set(rows.map((member) => member.id));
+}
+
+function areExpenseMemberReferencesValid(
+  groupMemberIds: Set<string>,
+  paidById: string,
+  participantIds: string[]
+) {
+  return groupMemberIds.has(paidById) && areGroupMemberIds(groupMemberIds, participantIds);
 }
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
@@ -140,7 +154,7 @@ export async function createGroup(formData: FormData) {
 }
 
 export async function deleteGroup(groupId: string) {
-  await requireGroupAccess(groupId);
+  await requireGroupOwner(groupId);
   await db.delete(groups).where(eq(groups.id, groupId));
   revalidatePath("/");
   redirect("/");
@@ -212,6 +226,11 @@ export async function createExpense(groupId: string, formData: FormData) {
     participantIds.length === 0
   )
     return;
+
+  const groupMemberIds = await getGroupMemberIdSet(groupId);
+  if (!areExpenseMemberReferencesValid(groupMemberIds, paidById, participantIds)) {
+    return;
+  }
 
   // Extract per-participant values from FormData into a plain object so the
   // pure computeSplits function doesn't depend on browser APIs.
@@ -298,6 +317,11 @@ export async function updateExpense(groupId: string, expenseId: string, formData
   )
     return;
 
+  const groupMemberIds = await getGroupMemberIdSet(groupId);
+  if (!areExpenseMemberReferencesValid(groupMemberIds, paidById, participantIds)) {
+    return;
+  }
+
   const inputs: SplitInputs = {
     shares: Object.fromEntries(
       participantIds.map((id) => [id, parseFloat(formData.get(`share_${id}`) as string) || 0])
@@ -368,7 +392,7 @@ export async function updateExpense(groupId: string, expenseId: string, formData
 
 export async function deleteExpense(groupId: string, expenseId: string) {
   await requireGroupAccess(groupId);
-  await db.delete(expenses).where(eq(expenses.id, expenseId));
+  await db.delete(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)));
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
 }
@@ -388,6 +412,11 @@ export async function createSettlement(groupId: string, formData: FormData) {
 
   if (!paidById || !paidToId || paidById === paidToId || isNaN(amount) || amount <= 0 || !date)
     return;
+
+  const groupMemberIds = await getGroupMemberIdSet(groupId);
+  if (!areGroupMemberIds(groupMemberIds, [paidById, paidToId])) {
+    return;
+  }
 
   if (submissionToken && (await replayExistingCreateAction(user.id, actionKind, submissionToken))) {
     return;

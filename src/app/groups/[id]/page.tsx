@@ -47,7 +47,8 @@ export default async function GroupPage({
   searchParams: Promise<{ activity?: string | string[] }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  await requireGroupAccess(id);
+  const { access } = await requireGroupAccess(id);
+  const canManageGroup = access.role === "owner";
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();
@@ -65,21 +66,23 @@ export default async function GroupPage({
       .orderBy(expenses.date),
     db.select().from(settlements).where(eq(settlements.groupId, id)),
   ]);
-  const sharedUsers = buildGroupShareList(
-    (
-      await db
-        .select({
-          email: users.email,
-          role: groupAccess.role,
-        })
-        .from(groupAccess)
-        .innerJoin(users, eq(groupAccess.userId, users.id))
-        .where(eq(groupAccess.groupId, id))
-    ).map((share) => ({
-      email: share.email,
-      role: share.role,
-    }))
-  );
+  const sharedUsers = canManageGroup
+    ? buildGroupShareList(
+        (
+          await db
+            .select({
+              email: users.email,
+              role: groupAccess.role,
+            })
+            .from(groupAccess)
+            .innerJoin(users, eq(groupAccess.userId, users.id))
+            .where(eq(groupAccess.groupId, id))
+        ).map((share) => ({
+          email: share.email,
+          role: share.role,
+        }))
+      )
+    : [];
 
   const expenseIds = groupExpenses.map((expense) => expense.id);
   const [groupExpenseSplits, groupExpenseRevisions]: [ExpenseSplitRow[], ExpenseRevisionRow[]] =
@@ -424,30 +427,34 @@ export default async function GroupPage({
         </div>
       </section>
 
-      <section>
-        <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
-          <p className="text-sm text-slate-500 mb-3">
-            Share this group with friends who already created an account.
-          </p>
-          <InviteUserForm groupId={id} />
-          <div className="mt-4 border-t border-slate-100 pt-4">
-            <h3 className="text-sm font-medium text-slate-900">Shared with</h3>
-            <div className="mt-2 space-y-2">
-              {sharedUsers.map((sharedUser) => (
-                <p key={sharedUser.email} className="text-sm text-slate-600">
-                  {sharedUser.email}
-                </p>
-              ))}
+      {canManageGroup && (
+        <section>
+          <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <p className="text-sm text-slate-500 mb-3">
+              Share this group with friends who already created an account.
+            </p>
+            <InviteUserForm groupId={id} />
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <h3 className="text-sm font-medium text-slate-900">Shared with</h3>
+              <div className="mt-2 space-y-2">
+                {sharedUsers.map((sharedUser) => (
+                  <p key={sharedUser.email} className="text-sm text-slate-600">
+                    {sharedUser.email}
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Danger zone */}
-      <section className="pt-2">
-        <DeleteGroupButton groupId={id} />
-      </section>
+      {canManageGroup && (
+        <section className="pt-2">
+          <DeleteGroupButton groupId={id} />
+        </section>
+      )}
     </div>
   );
 }

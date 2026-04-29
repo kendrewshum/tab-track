@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { groupAccess } from "@/db/schema";
 import { getAuthConfigError, isAuthSecretConfigured } from "@/lib/auth-config";
 import { hashPassword } from "@/lib/password";
-import { requireGroupAccess } from "@/lib/server/session";
+import { requireGroupOwner } from "@/lib/server/session";
 import { createUser, findUserByEmail } from "@/lib/server/users";
 import { validateSignupInput } from "@/lib/signup";
 import { generateId } from "@/lib/utils";
@@ -118,7 +118,7 @@ export async function inviteUserToGroupAction(
   _previousState: InviteFormState,
   formData: FormData
 ): Promise<InviteFormState> {
-  await requireGroupAccess(groupId);
+  await requireGroupOwner(groupId);
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!email) {
