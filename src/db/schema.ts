@@ -97,6 +97,10 @@ export const expenses = sqliteTable(
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),
+    deletedAt: text("deleted_at"),
+    deletedByUserId: text("deleted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     groupIdDateIdx: index("expenses_group_id_date_idx").on(

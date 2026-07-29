@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,10 @@ export default async function SettlePage({
     SettlementRow[],
   ] = await Promise.all([
     db.select().from(members).where(eq(members.groupId, id)),
-    db.select().from(expenses).where(eq(expenses.groupId, id)),
+    db
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.groupId, id), isNull(expenses.deletedAt))),
     db
       .select()
       .from(settlements)

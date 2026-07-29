@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +20,18 @@ export default async function EditExpensePage({
   if (!group) notFound();
 
   const [expense, splits, groupMembers] = await Promise.all([
-    db.query.expenses.findFirst({ where: eq(expenses.id, expenseId) }),
+    db.query.expenses.findFirst({
+      where: and(
+        eq(expenses.id, expenseId),
+        eq(expenses.groupId, id),
+        isNull(expenses.deletedAt)
+      ),
+    }),
     db.select().from(expenseSplits).where(eq(expenseSplits.expenseId, expenseId)),
     db.select().from(members).where(eq(members.groupId, id)),
   ]);
 
-  if (!expense || expense.groupId !== id) notFound();
+  if (!expense) notFound();
 
   return (
     <div className="space-y-6">

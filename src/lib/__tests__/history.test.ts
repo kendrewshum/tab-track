@@ -62,6 +62,257 @@ describe("expense snapshot serialization", () => {
 });
 
 describe("buildActivityEvents", () => {
+  it("uses snapshot continuity to order same-second edits and recover the original expense", () => {
+    const original = serializeExpenseSnapshot({
+      description: "Dinner",
+      amount: 40,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-20",
+      splits: [],
+    });
+    const firstEdit = serializeExpenseSnapshot({
+      description: "Dinner + drinks",
+      amount: 50,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-05-01",
+      splits: [],
+    });
+    const secondEdit = serializeExpenseSnapshot({
+      description: "Dinner + drinks + tip",
+      amount: 60,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-01",
+      splits: [],
+    });
+
+    const events = buildActivityEvents({
+      expenses: [
+        {
+          id: "expense-1",
+          description: "Dinner + drinks + tip",
+          amount: 60,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-01",
+          createdAt: "2026-04-20 09:00:00",
+        },
+      ],
+      revisions: [
+        {
+          id: "revision-a-second",
+          expenseId: "expense-1",
+          beforeSnapshot: firstEdit,
+          afterSnapshot: secondEdit,
+          createdAt: "2026-04-21 12:00:00",
+        },
+        {
+          id: "revision-z-first",
+          expenseId: "expense-1",
+          beforeSnapshot: original,
+          afterSnapshot: firstEdit,
+          createdAt: "2026-04-21 12:00:00",
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(
+      events
+        .filter((event) => event.type === "expense_edited")
+        .map((event) => event.revisionId)
+    ).toEqual(["revision-a-second", "revision-z-first"]);
+    expect(events.at(-1)).toMatchObject({
+      type: "expense_created",
+      expense: {
+        description: "Dinner",
+        amount: 40,
+        date: "2026-04-20",
+      },
+    });
+  });
+
+  it("uses a total order when lifecycle and cross-expense baseline priorities form a comparator cycle", () => {
+    const original = serializeExpenseSnapshot({
+      description: "Dinner",
+      amount: 40,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-01",
+      splits: [],
+    });
+    const firstEdit = serializeExpenseSnapshot({
+      description: "Dinner in March",
+      amount: 50,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-03-01",
+      splits: [],
+    });
+    const secondEdit = serializeExpenseSnapshot({
+      description: "Dinner in January",
+      amount: 60,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-01-01",
+      splits: [],
+    });
+    const revisions = [
+      {
+        id: "revision-a-newer",
+        expenseId: "expense-1",
+        beforeSnapshot: firstEdit,
+        afterSnapshot: secondEdit,
+        createdAt: "2026-04-21 12:00:00",
+      },
+      {
+        id: "revision-b-older",
+        expenseId: "expense-1",
+        beforeSnapshot: original,
+        afterSnapshot: firstEdit,
+        createdAt: "2026-04-21 12:00:00",
+      },
+    ];
+    const expenses = [
+      {
+        id: "expense-2",
+        description: "February expense",
+        amount: 20,
+        paidById: "bob",
+        splitType: "equal" as const,
+        date: "2026-02-01",
+        createdAt: "2026-04-21 12:00:00",
+      },
+    ];
+    const expectedOrder = [
+      "expense-created-expense-2",
+      "expense-edited-revision-a-newer",
+      "expense-edited-revision-b-older",
+    ];
+
+    const forward = buildActivityEvents({ expenses, revisions, settlements: [] });
+    const reversed = buildActivityEvents({
+      expenses: [...expenses].reverse(),
+      revisions: [...revisions].reverse(),
+      settlements: [],
+    });
+
+    expect(forward.map((event) => event.id)).toEqual(expectedOrder);
+    expect(reversed.map((event) => event.id)).toEqual(expectedOrder);
+  });
+
+  it("falls back deterministically when legacy revision chains are ambiguous", () => {
+    const base = serializeExpenseSnapshot({
+      description: "Dinner",
+      amount: 40,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-20",
+      splits: [],
+    });
+    const revisions = [
+      {
+        id: "revision-b",
+        expenseId: "expense-1",
+        beforeSnapshot: base,
+        afterSnapshot: serializeExpenseSnapshot({
+          ...parseExpenseSnapshot(base),
+          description: "Branch B",
+        }),
+        createdAt: "2026-04-21 12:00:00",
+      },
+      {
+        id: "revision-a",
+        expenseId: "expense-1",
+        beforeSnapshot: base,
+        afterSnapshot: serializeExpenseSnapshot({
+          ...parseExpenseSnapshot(base),
+          description: "Branch A",
+        }),
+        createdAt: "2026-04-21 12:00:00",
+      },
+    ];
+    const input = {
+      expenses: [],
+      settlements: [],
+    };
+
+    const forward = buildActivityEvents({ ...input, revisions });
+    const reversed = buildActivityEvents({ ...input, revisions: [...revisions].reverse() });
+
+    expect(forward.map((event) => event.id)).toEqual(reversed.map((event) => event.id));
+    expect(forward).toHaveLength(2);
+  });
+
+  it("preserves deleted expense history and sorts its deletion event by deletion time", () => {
+    const events = buildActivityEvents({
+      expenses: [
+        {
+          id: "expense-1",
+          description: "Dinner + tip",
+          amount: 48,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-20",
+          createdAt: "2026-04-20 09:00:00",
+          deletedAt: "2026-04-21 12:00:00",
+          deletedByUserId: "user-1",
+        },
+      ],
+      revisions: [
+        {
+          id: "revision-1",
+          expenseId: "expense-1",
+          beforeSnapshot: serializeExpenseSnapshot({
+            description: "Dinner",
+            amount: 40,
+            paidById: "alice",
+            splitType: "equal",
+            date: "2026-04-20",
+            splits: [
+              { memberId: "alice", amount: 20 },
+              { memberId: "bob", amount: 20 },
+            ],
+          }),
+          afterSnapshot: serializeExpenseSnapshot({
+            description: "Dinner + tip",
+            amount: 48,
+            paidById: "alice",
+            splitType: "equal",
+            date: "2026-04-20",
+            splits: [
+              { memberId: "alice", amount: 24 },
+              { memberId: "bob", amount: 24 },
+            ],
+          }),
+          createdAt: "2026-04-21 12:00:00",
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(events.map((event) => event.type)).toEqual([
+      "expense_deleted",
+      "expense_edited",
+      "expense_created",
+    ]);
+    expect(events[0]).toMatchObject({
+      id: "expense-deleted-expense-1",
+      expenseId: "expense-1",
+      description: "Dinner + tip",
+      deletedByUserId: "user-1",
+    });
+    expect(events[2]).toMatchObject({
+      type: "expense_created",
+      expense: {
+        description: "Dinner",
+        amount: 40,
+      },
+    });
+  });
+
   it("merges expense, edit, settlement, and reversal events in descending time order", () => {
     const events = buildActivityEvents({
       expenses: [
