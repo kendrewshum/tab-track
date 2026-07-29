@@ -44,6 +44,7 @@ npm run dev
 npm run lint
 npm test
 npm run build
+npm run db:migrate
 npm run test:e2e
 npm run test:e2e:ui
 ```
@@ -79,5 +80,5 @@ npm run test:e2e -- --project="iPhone 14"
 
 - Vitest runs Node-based unit tests.
 - Playwright starts the app on port `3001` and recreates a dedicated `e2e-test.db` before each run.
-- Hosted environments require `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, but local development does not.
+- Hosted environments require `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, but local development does not. See the [deployment guide](./docs/deployment.md) for Preview/Production separation and the explicit migration sequence.
 - Hosted auth also requires `AUTH_SECRET` and `APP_INVITE_CODE`.
