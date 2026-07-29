@@ -57,6 +57,7 @@ async function seedDatabase(db: TestDatabase): Promise<void> {
   await db.insert(users).values([
     { id: "owner", email: "owner@example.com", displayName: "Owner", passwordHash: "hash" },
     { id: "registered", email: "registered@example.com", displayName: "Registered", passwordHash: "hash" },
+    { id: "friend", email: "friend@example.com", displayName: "Friend", passwordHash: "hash" },
     { id: "other", email: "other@example.com", displayName: "Other", passwordHash: "hash" },
   ]);
   await db.insert(groups).values([
@@ -195,6 +196,30 @@ describe("shareGroup", () => {
     });
   });
 
+  it("normalizes a service email before finding and returning a registered account", async () => {
+    const db = await createTestDatabase();
+    await seedDatabase(db);
+
+    await expect(
+      share(db, { email: " Friend@Example.COM " }),
+    ).resolves.toEqual({
+      kind: "access-granted",
+      email: "friend@example.com",
+      memberLinked: false,
+    });
+    await expect(
+      db
+        .select()
+        .from(groupAccess)
+        .where(
+          and(
+            eq(groupAccess.groupId, "group-a"),
+            eq(groupAccess.userId, "friend"),
+          ),
+        ),
+    ).resolves.toHaveLength(1);
+  });
+
   it("keeps existing access authoritative instead of rotating a pending invitation", async () => {
     const db = await createTestDatabase();
     await seedDatabase(db);
@@ -251,27 +276,71 @@ describe("shareGroup", () => {
     });
   });
 
-  it("keeps the access grant when an exact member-link unique conflict races", async () => {
-    const uniqueError = Object.assign(new Error("unique constraint failed: members.group_id, members.user_id"), {
-      code: "SQLITE_CONSTRAINT_UNIQUE",
-    });
-    const calls: string[] = [];
+  it("commits access after production-classified member-link contention", async () => {
+    const db = await createTestDatabase();
+    await seedDatabase(db);
+    await db
+      .update(members)
+      .set({ userId: "registered" })
+      .where(eq(members.id, "member-same"));
+    const productionStore = createGroupSharingStore(db);
+    const seenErrors: unknown[] = [];
     const store: GroupSharingStore = {
-      transaction: async (callback) => callback({
-        findMember: async () => ({ id: "member-open", userId: null }),
-        findUserByEmail: async () => ({ id: "registered" }),
-        findAccess: async () => null,
-        grantAccess: async () => { calls.push("access"); },
-        linkMember: async () => { throw uniqueError; },
-        createOrRotateInvitation: async () => { throw new Error("unexpected invitation"); },
-      }),
-      isMemberLinkUniqueConflict: (error) => error === uniqueError,
+      ...productionStore,
+      isMemberLinkUniqueConflict(error) {
+        seenErrors.push(error);
+        return productionStore.isMemberLinkUniqueConflict(error);
+      },
     };
 
     await expect(
-      shareGroup(store, input({ email: "registered@example.com", memberId: "member-open" })),
-    ).resolves.toEqual({ kind: "access-granted", email: "registered@example.com", memberLinked: false });
-    expect(calls).toEqual(["access"]);
+      shareGroup(
+        store,
+        input({ email: "registered@example.com", memberId: "member-open" }),
+      ),
+    ).resolves.toEqual({
+      kind: "access-granted",
+      email: "registered@example.com",
+      memberLinked: false,
+    });
+    expect(seenErrors).toHaveLength(1);
+    expect(seenErrors[0]).toMatchObject({
+      code: expect.stringMatching(/^SQLITE_CONSTRAINT(?:_UNIQUE)?$/),
+      message: expect.stringMatching(
+        /^UNIQUE constraint failed: members\.group_id, members\.user_id$/,
+      ),
+    });
+    expect(productionStore.isMemberLinkUniqueConflict(seenErrors[0])).toBe(true);
+    await expect(
+      db
+        .select()
+        .from(groupAccess)
+        .where(
+          and(
+            eq(groupAccess.groupId, "group-a"),
+            eq(groupAccess.userId, "registered"),
+          ),
+        ),
+    ).resolves.toHaveLength(1);
+    await expect(
+      db.select({ userId: members.userId }).from(members).where(eq(members.id, "member-same")),
+    ).resolves.toEqual([{ userId: "registered" }]);
+    await expect(
+      db.select({ userId: members.userId }).from(members).where(eq(members.id, "member-open")),
+    ).resolves.toEqual([{ userId: null }]);
+  });
+
+  it("does not classify member-link constraints with additional columns", async () => {
+    const db = await createTestDatabase();
+    const store = createGroupSharingStore(db);
+    const broaderConstraint = Object.assign(
+      new Error(
+        "UNIQUE constraint failed: members.group_id, members.user_id, members.id",
+      ),
+      { code: "SQLITE_CONSTRAINT_UNIQUE" },
+    );
+
+    expect(store.isMemberLinkUniqueConflict(broaderConstraint)).toBe(false);
   });
 
   it("propagates unexpected failures so the real transaction rolls back", async () => {
@@ -301,5 +370,55 @@ describe("shareGroup", () => {
       share(db, { groupId: "group-b", generateId: () => "invitation-2", generateToken: () => "group-b-token" }),
     ).resolves.toEqual(expect.objectContaining({ kind: "invitation-created" }));
     await expect(invitationRows(db)).resolves.toHaveLength(2);
+  });
+
+  it("rolls back a rotation when its token hash collides with another invitation", async () => {
+    const db = await createTestDatabase();
+    await seedDatabase(db);
+    const oldInvitation = {
+      id: "invitee-invitation",
+      groupId: "group-a",
+      email: "invitee@example.com",
+      role: "member" as const,
+      memberId: "member-open",
+      tokenHash: hashGroupInvitationToken("old-token", secret),
+      expiresAt: now + 100,
+      claimedAt: 12,
+      claimedByUserId: "registered",
+      cancelledAt: 34,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.insert(groupInvitations).values([
+      oldInvitation,
+      {
+        id: "collision-invitation",
+        groupId: "group-b",
+        email: "collision@example.com",
+        role: "member",
+        memberId: null,
+        tokenHash: hashGroupInvitationToken("colliding-token", secret),
+        expiresAt: now + 200,
+        claimedAt: null,
+        claimedByUserId: null,
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    await expect(
+      share(db, {
+        email: "invitee@example.com",
+        memberId: "member-open-2",
+        generateToken: () => "colliding-token",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      db
+        .select()
+        .from(groupInvitations)
+        .where(eq(groupInvitations.id, "invitee-invitation")),
+    ).resolves.toEqual([oldInvitation]);
   });
 });

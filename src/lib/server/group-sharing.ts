@@ -1,6 +1,5 @@
-import { and, eq, isNull, ne, notExists, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import { alias } from "drizzle-orm/sqlite-core";
 
 import { groupAccess, groupInvitations, members, users } from "@/db/schema";
 import {
@@ -68,6 +67,8 @@ export async function shareGroup(
   store: GroupSharingStore,
   input: ShareGroupInput,
 ): Promise<ShareGroupResult> {
+  const email = input.email.trim().toLowerCase();
+
   return store.transaction(async (tx) => {
     const member = input.memberId
       ? await tx.findMember(input.groupId, input.memberId)
@@ -76,7 +77,7 @@ export async function shareGroup(
       return { kind: "invalid-member" };
     }
 
-    const user = await tx.findUserByEmail(input.email);
+    const user = await tx.findUserByEmail(email);
     if (member !== null && member.userId !== null && member.userId !== user?.id) {
       return { kind: "invalid-member" };
     }
@@ -87,7 +88,7 @@ export async function shareGroup(
       await tx.createOrRotateInvitation({
         id: input.generateId(),
         groupId: input.groupId,
-        email: input.email,
+        email,
         memberId: input.memberId,
         tokenHash: hashGroupInvitationToken(rawToken, input.secret),
         expiresAt,
@@ -95,7 +96,7 @@ export async function shareGroup(
       });
       return {
         kind: "invitation-created",
-        email: input.email,
+        email,
         invitationPath: `/invite/${rawToken}`,
         expiresAt,
       };
@@ -112,18 +113,18 @@ export async function shareGroup(
     });
 
     if (member === null) {
-      return { kind: "access-granted", email: input.email, memberLinked: false };
+      return { kind: "access-granted", email, memberLinked: false };
     }
     if (member.userId === user.id) {
-      return { kind: "access-granted", email: input.email, memberLinked: true };
+      return { kind: "access-granted", email, memberLinked: true };
     }
 
     try {
       const memberLinked = await tx.linkMember(input.groupId, member.id, user.id);
-      return { kind: "access-granted", email: input.email, memberLinked };
+      return { kind: "access-granted", email, memberLinked };
     } catch (error) {
       if (store.isMemberLinkUniqueConflict(error)) {
-        return { kind: "access-granted", email: input.email, memberLinked: false };
+        return { kind: "access-granted", email, memberLinked: false };
       }
       throw error;
     }
@@ -144,7 +145,7 @@ function isMemberLinkUniqueConflict(error: unknown): boolean {
     (error.code === "SQLITE_CONSTRAINT" ||
       error.code === "SQLITE_CONSTRAINT_UNIQUE") &&
     typeof error.message === "string" &&
-    /unique constraint failed:\s*members\.group_id,\s*members\.user_id/i.test(
+    /^(?:SQLITE_CONSTRAINT(?:_UNIQUE)?:\s*)?UNIQUE constraint failed: members\.group_id, members\.user_id$/i.test(
       error.message,
     )
   );
@@ -201,7 +202,6 @@ export function createGroupSharingStore<
           },
 
           async linkMember(groupId, memberId, userId) {
-            const linkedMember = alias(members, "linked_member");
             const linked = await tx
               .update(members)
               .set({ userId })
@@ -210,18 +210,6 @@ export function createGroupSharingStore<
                   eq(members.groupId, groupId),
                   eq(members.id, memberId),
                   or(isNull(members.userId), eq(members.userId, userId)),
-                  notExists(
-                    tx
-                      .select({ id: linkedMember.id })
-                      .from(linkedMember)
-                      .where(
-                        and(
-                          eq(linkedMember.groupId, groupId),
-                          eq(linkedMember.userId, userId),
-                          ne(linkedMember.id, memberId),
-                        ),
-                      ),
-                  ),
                 ),
               )
               .returning({ id: members.id });
