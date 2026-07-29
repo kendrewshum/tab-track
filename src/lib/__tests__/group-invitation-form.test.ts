@@ -1,3 +1,5 @@
+import { File } from "node:buffer";
+
 import { describe, expect, test } from "vitest";
 
 import { parseGroupInvitationForm } from "@/lib/group-invitation-form";
