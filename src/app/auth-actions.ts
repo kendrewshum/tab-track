@@ -7,10 +7,15 @@ import { signIn, signOut } from "@/auth";
 import { db } from "@/db";
 import { groupAccess } from "@/db/schema";
 import { getAuthConfigError, isAuthSecretConfigured } from "@/lib/auth-config";
+import { parseMemberAccountLinkForm } from "@/lib/member-account-link-form";
 import { hashPassword } from "@/lib/password";
 import { createAuthAttemptStore } from "@/lib/server/auth-attempt-store";
 import { createAuthRateLimiter } from "@/lib/server/auth-rate-limit";
 import { getTrustedRequestSource } from "@/lib/server/auth-request-source";
+import {
+  createMemberAccountLinkStore,
+  setAccountMemberLink,
+} from "@/lib/server/member-account-links";
 import { requireGroupOwner } from "@/lib/server/session";
 import { createSignupAccountAttempt } from "@/lib/server/signup-account";
 import { createUser, findUserByEmail } from "@/lib/server/users";
@@ -21,6 +26,11 @@ export type AuthFormState = {
 };
 
 export type InviteFormState = {
+  error?: string;
+  success?: string;
+};
+
+export type MemberAccountLinkFormState = {
   error?: string;
   success?: string;
 };
@@ -161,4 +171,35 @@ export async function inviteUserToGroupAction(
   revalidatePath(`/groups/${groupId}`);
 
   return { success: `Shared with ${user.email}.` };
+}
+
+export async function setMemberAccountLinkAction(
+  groupId: string,
+  _previousState: MemberAccountLinkFormState,
+  formData: FormData
+): Promise<MemberAccountLinkFormState> {
+  await requireGroupOwner(groupId);
+
+  const parsed = parseMemberAccountLinkForm(formData);
+  if (!parsed.success) {
+    return { error: "Choose a valid ledger member." };
+  }
+
+  const result = await setAccountMemberLink(createMemberAccountLinkStore(db), {
+    groupId,
+    ...parsed.data,
+  });
+
+  if (!result.success) {
+    if (result.reason === "member-claimed") {
+      return {
+        error: "That ledger member is already linked to another account.",
+      };
+    }
+
+    return { error: "We could not update that account link." };
+  }
+
+  revalidatePath(`/groups/${groupId}`);
+  return { success: "Ledger member updated." };
 }
