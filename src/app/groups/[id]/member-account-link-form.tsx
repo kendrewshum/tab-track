@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useId, type ChangeEvent } from "react";
 
 import {
   setMemberAccountLinkAction,
@@ -9,6 +9,10 @@ import {
 import type { MemberLinkChoice } from "@/lib/member-account-links";
 
 const initialState: MemberAccountLinkFormState = {};
+
+function submitMemberAccountLink(event: ChangeEvent<HTMLSelectElement>) {
+  event.currentTarget.form?.requestSubmit();
+}
 
 export function MemberAccountLinkForm({
   groupId,
@@ -45,6 +49,7 @@ export function MemberAccountLinkForm({
           id={selectId}
           name="memberId"
           defaultValue={memberId ?? ""}
+          onChange={submitMemberAccountLink}
           disabled={pending}
           className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-500"
         >

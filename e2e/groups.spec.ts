@@ -403,8 +403,6 @@ test.describe("Group management", () => {
       await expect(memberRow.getByText("Member", { exact: true })).toBeVisible();
       await expect(memberRow.getByLabel("Ledger member")).toHaveValue("");
 
-      await memberRow.getByLabel("Ledger member").selectOption({ label: "Bob" });
-
       let releaseSubmit!: () => void;
       const submitBlocked = new Promise<void>((resolve) => {
         releaseSubmit = resolve;
@@ -424,7 +422,7 @@ test.describe("Group management", () => {
       });
 
       const memberSave = memberRow.locator('button[type="submit"]');
-      const pendingSave = memberSave.click();
+      const pendingSave = memberRow.getByLabel("Ledger member").selectOption({ label: "Bob" });
       await expect.poll(() => sawSubmitRequest).toBe(true);
       await expect(memberSave).toHaveText("Saving...");
       await expect(memberSave).toBeDisabled();
@@ -444,9 +442,6 @@ test.describe("Group management", () => {
       await accountAccessRow(ownerPage, member.email)
         .getByLabel("Ledger member")
         .selectOption({ label: "Alice" });
-      await accountAccessRow(ownerPage, member.email)
-        .getByRole("button", { name: "Save", exact: true })
-        .click();
       await expect(accountAccessRow(ownerPage, member.email).getByRole("status")).toHaveText(
         "Ledger member updated."
       );
@@ -462,9 +457,6 @@ test.describe("Group management", () => {
       await accountAccessRow(ownerPage, member.email)
         .getByLabel("Ledger member")
         .selectOption({ label: "No linked member" });
-      await accountAccessRow(ownerPage, member.email)
-        .getByRole("button", { name: "Save", exact: true })
-        .click();
       await expect(accountAccessRow(ownerPage, member.email).getByRole("status")).toHaveText(
         "Ledger member updated."
       );
@@ -478,18 +470,12 @@ test.describe("Group management", () => {
       await accountAccessRow(ownerPage, owner.email)
         .getByLabel("Ledger member")
         .selectOption({ label: "Alice" });
-      await accountAccessRow(ownerPage, owner.email)
-        .getByRole("button", { name: "Save", exact: true })
-        .click();
       await expect(accountAccessRow(ownerPage, owner.email).getByRole("status")).toHaveText(
         "Ledger member updated."
       );
       await accountAccessRow(ownerPage, owner.email)
         .getByLabel("Ledger member")
         .selectOption({ label: "No linked member" });
-      await accountAccessRow(ownerPage, owner.email)
-        .getByRole("button", { name: "Save", exact: true })
-        .click();
       await expect(accountAccessRow(ownerPage, owner.email).getByRole("status")).toHaveText(
         "Ledger member updated."
       );
@@ -504,9 +490,8 @@ test.describe("Group management", () => {
 
       await ownerPage.goto(groupPath);
       const craftedOwnerRow = accountAccessRow(ownerPage, owner.email);
-      await craftedOwnerRow.getByLabel("Ledger member").selectOption({ label: "Bob" });
       const craftedRequest = await captureAbortedPost(ownerPage, groupPath, () =>
-        craftedOwnerRow.getByRole("button", { name: "Save", exact: true }).click()
+        craftedOwnerRow.getByLabel("Ledger member").selectOption({ label: "Bob" })
       );
       const response = await replayWithMemberSession(memberContext, craftedRequest);
 
