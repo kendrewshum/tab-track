@@ -1,5 +1,13 @@
 import { sql } from "drizzle-orm";
-import { foreignKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  foreignKey,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import { CREATE_ACTION_KINDS } from "@/lib/idempotency";
 
 export const users = sqliteTable(
@@ -155,4 +163,18 @@ export const idempotentSubmissions = sqliteTable(
       "idempotent_submissions_user_action_token_unique"
     ).on(table.userId, table.actionKind, table.submissionToken),
   })
+);
+
+export const authAttempts = sqliteTable(
+  "auth_attempts",
+  {
+    bucketKey: text("bucket_key").primaryKey(),
+    failureCount: integer("failure_count").notNull(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => ({
+    expiresAtIdx: index("auth_attempts_expires_at_idx").on(table.expiresAt),
+  }),
 );

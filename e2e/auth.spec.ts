@@ -21,6 +21,63 @@ test.describe("Authentication and legacy group access", () => {
     await expect(page.getByText("No groups yet")).toBeVisible();
   });
 
+  test("repeated failed logins are throttled without revealing account state", async ({
+    page,
+  }) => {
+    const account = await signUpAndLogin(page);
+    await page.getByRole("button", { name: /Sign Out/i }).click();
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await page.goto("/login");
+      await page.getByPlaceholder("you@example.com").fill(account.email);
+      await page.getByPlaceholder("Your password").fill("wrong-password");
+      await page.getByRole("button", { name: "Sign In" }).click();
+      await expect(page.locator("form").getByRole("alert")).toContainText(
+        "That email and password do not match",
+      );
+    }
+
+    await page.goto("/login");
+    await page.getByPlaceholder("you@example.com").fill(account.email);
+    await page.getByPlaceholder("Your password").fill(account.password);
+    await page.getByRole("button", { name: "Sign In" }).click();
+
+    await expect(page).toHaveURL("/login");
+    await expect(page.locator("form").getByRole("alert")).toContainText(
+      "That email and password do not match",
+    );
+    await expect(page.locator("form").getByRole("alert")).not.toContainText(account.email);
+  });
+
+  test("repeated invalid invite attempts throttle signup", async ({ page }) => {
+    const email = `throttled-signup-${Date.now()}@example.com`;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await page.goto("/signup");
+      await page.getByPlaceholder("Your name").fill("Throttled Signup");
+      await page.getByPlaceholder("you@example.com").fill(email);
+      await page.getByPlaceholder("At least 8 characters").fill("password123");
+      await page.getByPlaceholder("Enter invite code").fill("wrong-invite");
+      await page.getByRole("button", { name: "Create Account" }).click();
+      await expect(page.locator("form").getByRole("alert")).toHaveText(
+        "That invite code is not valid.",
+      );
+    }
+
+    await page.goto("/signup");
+    await page.getByPlaceholder("Your name").fill("Throttled Signup");
+    await page.getByPlaceholder("you@example.com").fill(email);
+    await page.getByPlaceholder("At least 8 characters").fill("password123");
+    await page.getByPlaceholder("Enter invite code").fill("test-invite-code");
+    await page.getByRole("button", { name: "Create Account" }).click();
+
+    await expect(page).toHaveURL("/signup");
+    await expect(page.locator("form").getByRole("alert")).toContainText(
+      "We could not create an account with those details",
+    );
+    await expect(page.locator("form").getByRole("alert")).not.toContainText(email);
+  });
+
   test("a mapped legacy user sees the existing Austin 2026 group and its expenses", async ({
     page,
   }) => {
