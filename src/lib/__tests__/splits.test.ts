@@ -146,6 +146,19 @@ describe("shares split", () => {
     );
     expect(total(splits)).toBe(7.77);
   });
+
+  it("avoids overflow when a large amount has a large share weight", () => {
+    const splits = computeSplits(
+      "shares",
+      1e305,
+      ["alice", "bob"],
+      { shares: { alice: 1e308, bob: 1 } },
+      "alice"
+    );
+
+    expect(amounts(splits)).toEqual([1e305, 0]);
+    expect(splits.every((split) => Number.isFinite(split.amount))).toBe(true);
+  });
 });
 
 // ─── Percentage split ─────────────────────────────────────────────────────────

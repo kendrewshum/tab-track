@@ -173,6 +173,37 @@ test.describe("Adding expenses – equal split", () => {
     await expect(page.getByText("Injected Dinner", { exact: true })).toHaveCount(0);
   });
 
+  test("rejects crafted invalid split payloads", async ({ page }) => {
+    const groupId = await createTestGroup(page, "Crafted Split", ["Alice", "Bob"]);
+    await fillExpenseBase(page, groupId, {
+      description: "Invalid Percentage",
+      amount: "10",
+      paidBy: "Alice",
+    });
+    await page.getByRole("button", { name: "%" }).click();
+    await page.locator("input[name^='pct_']").first().fill("50");
+    await page.locator("input[name^='pct_']").last().fill("50");
+    await expect(page.getByRole("button", { name: "Add Expense" })).toBeEnabled();
+
+    await page.evaluate(() => {
+      const percentageInputs = document.querySelectorAll<HTMLInputElement>(
+        "input[name^='pct_']"
+      );
+      if (percentageInputs.length !== 2) {
+        throw new Error("Expected percentage split inputs to be present.");
+      }
+      percentageInputs.forEach((input) => {
+        input.value = "45";
+      });
+    });
+
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${groupId}/expenses/new`);
+
+    await page.goto(`/groups/${groupId}`);
+    await expect(page.getByText("Invalid Percentage", { exact: true })).toHaveCount(0);
+  });
+
   test("can delete an expense and balances reset to zero", async ({ page }) => {
     const id = await createTestGroup(page, "E2E Delete", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Coffee", amount: "5", paidBy: "Alice" });

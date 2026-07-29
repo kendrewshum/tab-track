@@ -80,7 +80,7 @@ export function computeSplits(
     const weights = participantIds.map((id) => inputs.shares?.[id] ?? 0);
     const totalWeight = weights.reduce((s, w) => s + w, 0);
     if (totalWeight === 0) return [];
-    const base = weights.map((w) => r2((amount * w) / totalWeight));
+    const base = weights.map((w) => r2(amount * (w / totalWeight)));
     const amounts = applyRemainder(base);
     return participantIds.map((id, i) => ({ memberId: id, amount: amounts[i] }));
   }
