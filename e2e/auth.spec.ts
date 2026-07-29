@@ -26,6 +26,7 @@ test.describe("Authentication and legacy group access", () => {
   }) => {
     const account = await signUpAndLogin(page);
     await page.getByRole("button", { name: /Sign Out/i }).click();
+    await expect(page).toHaveURL("/login");
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await page.goto("/login");
