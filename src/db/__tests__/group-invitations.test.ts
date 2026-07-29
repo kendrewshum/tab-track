@@ -101,7 +101,14 @@ describe("group invitations migration", () => {
     const columns = await client.execute('PRAGMA table_info("group_invitations")');
     expect(columns.rows).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ name: "id", notnull: 1 }),
+        expect.objectContaining({ name: "group_id", notnull: 1 }),
         expect.objectContaining({ name: "email", notnull: 1 }),
+        expect.objectContaining({ name: "role", notnull: 1 }),
+        expect.objectContaining({ name: "token_hash", notnull: 1 }),
+        expect.objectContaining({ name: "expires_at", notnull: 1 }),
+        expect.objectContaining({ name: "created_at", notnull: 1 }),
+        expect.objectContaining({ name: "updated_at", notnull: 1 }),
         expect.objectContaining({ name: "member_id", notnull: 0 }),
         expect.objectContaining({ name: "claimed_at", notnull: 0 }),
         expect.objectContaining({ name: "claimed_by_user_id", notnull: 0 }),
@@ -152,6 +159,26 @@ describe("group invitations migration", () => {
         }),
       ]),
     );
+
+    const groupEmailUniqueIndex = await client.execute(
+      'PRAGMA index_info("group_invitations_group_email_unique")',
+    );
+    expect(groupEmailUniqueIndex.rows.map((row) => row.name)).toEqual([
+      "group_id",
+      "email",
+    ]);
+
+    const tokenHashUniqueIndex = await client.execute(
+      'PRAGMA index_info("group_invitations_token_hash_unique")',
+    );
+    expect(tokenHashUniqueIndex.rows.map((row) => row.name)).toEqual([
+      "token_hash",
+    ]);
+
+    const expiresAtIndex = await client.execute(
+      'PRAGMA index_info("group_invitations_expires_at_idx")',
+    );
+    expect(expiresAtIndex.rows.map((row) => row.name)).toEqual(["expires_at"]);
   });
 
   it("rejects duplicate email addresses within one group", async () => {
