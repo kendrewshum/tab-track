@@ -64,32 +64,37 @@ async function insertInvitation(
     groupId,
     email,
     tokenHash,
+    role = "member",
     memberId = null,
+    claimedByUserId = null,
   }: {
     id: string;
     groupId: string;
     email: string;
     tokenHash: string;
+    role?: "member" | "owner";
     memberId?: string | null;
+    claimedByUserId?: string | null;
   },
 ): Promise<void> {
   await client.execute({
     sql: `
       INSERT INTO group_invitations (
         id, group_id, email, role, member_id, token_hash, expires_at,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        claimed_by_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       id,
       groupId,
       email,
-      "member",
+      role,
       memberId,
       tokenHash,
-      1_700_000_000,
-      1_700_000_000,
-      1_700_000_000,
+      1_700_000_000_000,
+      claimedByUserId,
+      1_700_000_000_000,
+      1_700_000_000_000,
     ],
   });
 }
@@ -244,6 +249,21 @@ describe("group invitations migration", () => {
     ).rejects.toThrow(/unique/i);
   });
 
+  it("rejects roles other than member", async () => {
+    const client = await createMigratedDatabase();
+    await insertGroup(client, "group-1");
+
+    await expect(
+      insertInvitation(client, {
+        id: "invitation-1",
+        groupId: "group-1",
+        email: "friend@example.com",
+        role: "owner",
+        tokenHash: "token-1",
+      }),
+    ).rejects.toThrow(/check/i);
+  });
+
   it("unlinks a deleted member from an invitation", async () => {
     const client = await createMigratedDatabase();
     await insertGroup(client, "group-1");
@@ -266,5 +286,29 @@ describe("group invitations migration", () => {
       args: ["invitation-1"],
     });
     expect(result.rows).toEqual([{ member_id: null }]);
+  });
+
+  it("unlinks a deleted claiming user from an invitation", async () => {
+    const client = await createMigratedDatabase();
+    await insertUser(client, "user-1");
+    await insertGroup(client, "group-1");
+    await insertInvitation(client, {
+      id: "invitation-1",
+      groupId: "group-1",
+      email: "friend@example.com",
+      tokenHash: "token-1",
+      claimedByUserId: "user-1",
+    });
+
+    await client.execute({
+      sql: "DELETE FROM users WHERE id = ?",
+      args: ["user-1"],
+    });
+
+    const result = await client.execute({
+      sql: "SELECT claimed_by_user_id FROM group_invitations WHERE id = ?",
+      args: ["invitation-1"],
+    });
+    expect(result.rows).toEqual([{ claimed_by_user_id: null }]);
   });
 });

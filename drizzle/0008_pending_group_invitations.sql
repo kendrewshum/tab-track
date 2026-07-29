@@ -13,7 +13,8 @@ CREATE TABLE `group_invitations` (
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`group_id`) REFERENCES `groups`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`member_id`) REFERENCES `members`(`id`) ON UPDATE no action ON DELETE set null,
-	FOREIGN KEY (`claimed_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
+	FOREIGN KEY (`claimed_by_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null,
+	CONSTRAINT "group_invitations_role_check" CHECK("group_invitations"."role" = 'member')
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `group_invitations_group_email_unique` ON `group_invitations` (`group_id`,`email`);--> statement-breakpoint

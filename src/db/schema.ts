@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -108,6 +109,10 @@ export const groupInvitations = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => ({
+    roleCheck: check(
+      "group_invitations_role_check",
+      sql`${table.role} = 'member'`,
+    ),
     groupEmailUniqueIndex: uniqueIndex("group_invitations_group_email_unique").on(
       table.groupId,
       table.email,

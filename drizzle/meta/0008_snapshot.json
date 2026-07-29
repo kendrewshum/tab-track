@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ae9ea784-40d0-4e1a-8480-9e77c730ac92",
+  "id": "c497aea8-3450-40e3-be40-eedf6e215125",
   "prevId": "e6645f6b-3230-4653-9643-c5522ed00d3f",
   "tables": {
     "auth_attempts": {
@@ -573,7 +573,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "group_invitations_role_check": {
+          "name": "group_invitations_role_check",
+          "value": "\"group_invitations\".\"role\" = 'member'"
+        }
+      }
     },
     "groups": {
       "name": "groups",
