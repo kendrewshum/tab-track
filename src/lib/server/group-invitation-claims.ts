@@ -236,12 +236,24 @@ function isMemberLinkUniqueConflict(error: unknown): boolean {
   return message.trim().toLowerCase() === canonicalMessage;
 }
 
+const SQLITE_BUSY_CODES = new Set([
+  "SQLITE_BUSY",
+  "SQLITE_BUSY_RECOVERY",
+  "SQLITE_BUSY_SNAPSHOT",
+  "SQLITE_BUSY_TIMEOUT",
+]);
+const SQLITE_BUSY_RAW_CODES = new Set([5, 261, 517, 773]);
+
 function isDatabaseBusy(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const code = "code" in error ? error.code : undefined;
+  const rawCode = "rawCode" in error ? error.rawCode : undefined;
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "SQLITE_BUSY"
+    (typeof code === "string" && SQLITE_BUSY_CODES.has(code)) ||
+    (typeof rawCode === "number" && SQLITE_BUSY_RAW_CODES.has(rawCode))
   );
 }
 

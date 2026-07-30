@@ -23,6 +23,7 @@ import { hashGroupInvitationToken } from "@/lib/group-invitation-token";
 import {
   claimGroupInvitation,
   createGroupInvitationClaimStore,
+  type GroupInvitationClaimStore,
 } from "@/lib/server/group-invitation-claims";
 import {
   cancelGroupInvitation,
@@ -43,8 +44,10 @@ type TestSchema = {
 };
 
 type TestDatabase = ReturnType<typeof drizzle<TestSchema>>;
+type TestClient = ReturnType<typeof createClient>;
 
 const cleanups: Array<() => void> = [];
+const clientsByDatabase = new WeakMap<TestDatabase, TestClient>();
 const now = 1_700_000_000_000;
 const secret = "test-invitation-secret";
 
@@ -79,6 +82,9 @@ async function createTestDatabases(count: number): Promise<TestDatabase[]> {
       },
     }),
   );
+  databases.forEach((database, index) => {
+    clientsByDatabase.set(database, clients[index]!);
+  });
   cleanups.push(() => {
     for (const client of clients) {
       client.close();
@@ -565,5 +571,114 @@ describe("cancelGroupInvitation", () => {
           ),
       ).resolves.toEqual([]);
     }
+  });
+
+  it("retries a claim whose read snapshot is invalidated by cancellation", async () => {
+    const [db, concurrentDb] = await createTestDatabases(2);
+    if (!db || !concurrentDb) {
+      throw new Error("missing concurrent database");
+    }
+    await seedDatabase(db);
+
+    let reportTransactionRead!: () => void;
+    const transactionRead = new Promise<void>((resolve) => {
+      reportTransactionRead = resolve;
+    });
+    let resumeClaim!: () => void;
+    const cancellationCommitted = new Promise<void>((resolve) => {
+      resumeClaim = resolve;
+    });
+    let blockFirstTransactionRead = true;
+    const client = clientsByDatabase.get(db);
+    if (!client) {
+      throw new Error("missing database client");
+    }
+    // A read transaction begins deferred, allowing the cancellation write to
+    // commit after this claim's read and invalidate its SQLite snapshot.
+    const deferredClient = new Proxy(client, {
+      get(target, property) {
+        if (property === "transaction") {
+          return () => target.transaction("read");
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const deferredDb = drizzle(deferredClient, {
+      schema: {
+        expenseRevisions,
+        expenses,
+        expenseSplits,
+        groupAccess,
+        groupInvitations,
+        groups,
+        members,
+        settlements,
+        users,
+      },
+    });
+    const productionStore = createGroupInvitationClaimStore(deferredDb);
+    const barrierStore: GroupInvitationClaimStore = {
+      ...productionStore,
+      transaction: (callback) =>
+        productionStore.transaction((tx) =>
+          callback({
+            ...tx,
+            async findActiveInvitation(tokenHash, readAt) {
+              const invitation = await tx.findActiveInvitation(
+                tokenHash,
+                readAt,
+              );
+              if (blockFirstTransactionRead) {
+                blockFirstTransactionRead = false;
+                reportTransactionRead();
+                await cancellationCommitted;
+              }
+              return invitation;
+            },
+          }),
+        ),
+    };
+
+    const claimResult = claimGroupInvitation(barrierStore, {
+      rawToken: "active-token",
+      secret,
+      user: { id: "claimant", email: "claimant@example.com" },
+      now,
+    });
+    await transactionRead;
+
+    let cancelResult;
+    try {
+      cancelResult = await cancelGroupInvitation(managementStore(concurrentDb), {
+        groupId: "group-a",
+        invitationId: "invitation-active",
+        cancelledByUserId: "owner-a",
+        now,
+      });
+    } finally {
+      resumeClaim();
+    }
+
+    await expect(claimResult).resolves.toEqual({ kind: "unavailable" });
+    expect(cancelResult).toEqual({ kind: "cancelled" });
+    await expect(
+      db
+        .select({
+          claimedAt: groupInvitations.claimedAt,
+          claimedByUserId: groupInvitations.claimedByUserId,
+          cancelledAt: groupInvitations.cancelledAt,
+          cancelledByUserId: groupInvitations.cancelledByUserId,
+        })
+        .from(groupInvitations)
+        .where(eq(groupInvitations.id, "invitation-active")),
+    ).resolves.toEqual([
+      {
+        claimedAt: null,
+        claimedByUserId: null,
+        cancelledAt: now,
+        cancelledByUserId: "owner-a",
+      },
+    ]);
   });
 });

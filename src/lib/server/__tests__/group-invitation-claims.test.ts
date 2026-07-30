@@ -725,14 +725,54 @@ describe("group invitation claims", () => {
     expect(transactionCalls).toBe(1);
   });
 
-  it("retries a SQLITE_BUSY claim transaction and returns its successful result", async () => {
+  it.each([
+    ["basic code", { code: "SQLITE_BUSY" }],
+    ["recovery code", { code: "SQLITE_BUSY_RECOVERY" }],
+    ["snapshot code", { code: "SQLITE_BUSY_SNAPSHOT" }],
+    ["timeout code", { code: "SQLITE_BUSY_TIMEOUT" }],
+    ["basic raw code", { rawCode: 5 }],
+    ["recovery raw code", { rawCode: 261 }],
+    ["snapshot raw code", { rawCode: 517 }],
+    ["timeout raw code", { rawCode: 773 }],
+  ])(
+    "retries a SQLite busy claim transaction identified by %s",
+    async (_description, busyShape) => {
+      let transactionCalls = 0;
+      const store: GroupInvitationClaimStore = {
+        findActiveInvitation: async () => activeInvitation(),
+        async transaction(callback) {
+          transactionCalls += 1;
+          if (transactionCalls === 1) {
+            throw Object.assign(
+              new Error("database is locked"),
+              busyShape,
+            );
+          }
+          return callback(successfulClaimTransaction());
+        },
+        isMemberLinkUniqueConflict: () => false,
+      };
+
+      await expect(
+        claimGroupInvitation(store, {
+          rawToken: "active-token",
+          secret,
+          user: { id: "claimant", email: "friend@example.com" },
+          now,
+        }),
+      ).resolves.toEqual({ kind: "claimed", groupId: "group-a" });
+      expect(transactionCalls).toBe(2);
+    },
+  );
+
+  it("does not retry a non-busy transaction failure", async () => {
     let transactionCalls = 0;
+    const failure = new Error("unexpected database failure");
     const store: GroupInvitationClaimStore = {
       findActiveInvitation: async () => activeInvitation(),
-      async transaction(callback) {
+      async transaction() {
         transactionCalls += 1;
-        if (transactionCalls === 1) throw databaseBusyError();
-        return callback(successfulClaimTransaction());
+        throw failure;
       },
       isMemberLinkUniqueConflict: () => false,
     };
@@ -744,13 +784,20 @@ describe("group invitation claims", () => {
         user: { id: "claimant", email: "friend@example.com" },
         now,
       }),
-    ).resolves.toEqual({ kind: "claimed", groupId: "group-a" });
-    expect(transactionCalls).toBe(2);
+    ).rejects.toBe(failure);
+    expect(transactionCalls).toBe(1);
   });
 
-  it("does not retry a non-busy transaction failure", async () => {
+  it.each([
+    ["an unrelated SQLite code", { code: "SQLITE_LOCKED", rawCode: 6 }],
+    ["an unknown busy suffix", { code: "SQLITE_BUSY_CUSTOM" }],
+    ["an unrelated raw code", { rawCode: 518 }],
+  ])("does not retry %s", async (_description, failureShape) => {
     let transactionCalls = 0;
-    const failure = new Error("unexpected database failure");
+    const failure = Object.assign(
+      new Error("unexpected database failure"),
+      failureShape,
+    );
     const store: GroupInvitationClaimStore = {
       findActiveInvitation: async () => activeInvitation(),
       async transaction() {
