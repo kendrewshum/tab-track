@@ -38,10 +38,7 @@ function privateRedirect(
     response.cookies.set(
       GROUP_INVITATION_COOKIE_NAME,
       "",
-      getGroupInvitationCookieOptions(
-        0,
-        new URL(request.url).protocol === "https:",
-      ),
+      getGroupInvitationCookieOptions(0, request.url),
     );
   }
   if (options.retryAfterSeconds !== undefined) {

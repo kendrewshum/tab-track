@@ -58,10 +58,7 @@ export async function GET(
     response.cookies.set(
       GROUP_INVITATION_COOKIE_NAME,
       token,
-      getGroupInvitationCookieOptions(
-        maxAge,
-        new URL(request.url).protocol === "https:",
-      ),
+      getGroupInvitationCookieOptions(maxAge, request.url),
     );
     return response;
   } catch {

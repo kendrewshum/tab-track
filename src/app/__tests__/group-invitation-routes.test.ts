@@ -172,7 +172,7 @@ describe("GET /invite/[token]", () => {
     },
   );
 
-  it("sets Secure from the invitation request protocol", async () => {
+  it("keeps production invitation cookies Secure on HTTP", async () => {
     vi.stubEnv("NODE_ENV", "production");
     const now = 1_800_000_000_000;
     vi.spyOn(Date, "now").mockReturnValue(now);
@@ -181,16 +181,44 @@ describe("GET /invite/[token]", () => {
       expiresAt: now + 60_000,
     });
 
-    const httpResponse = await landInvitation(
-      new Request("http://localhost:3001/invite/raw-token"),
-      { params: Promise.resolve({ token: rawToken }) },
-    );
-    const httpsResponse = await landInvitation(
-      new Request(requestUrl),
+    const response = await landInvitation(
+      new Request("http://tabtrack.example/invite/raw-token"),
       { params: Promise.resolve({ token: rawToken }) },
     );
 
-    expect(httpResponse.headers.get("set-cookie")).not.toContain(
+    expect(response.headers.get("set-cookie")).toContain("Secure");
+  });
+
+  it("allows the explicit Playwright override only for HTTP loopback", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv(
+      "E2E_ALLOW_INSECURE_GROUP_INVITATION_COOKIE",
+      "1",
+    );
+    const now = 1_800_000_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    mocks.inspectGroupInvitation.mockResolvedValue({
+      kind: "active",
+      expiresAt: now + 60_000,
+    });
+
+    const loopbackResponse = await landInvitation(
+      new Request("http://localhost:3001/invite/raw-token"),
+      { params: Promise.resolve({ token: rawToken }) },
+    );
+    const publicHttpResponse = await landInvitation(
+      new Request("http://tabtrack.example/invite/raw-token"),
+      { params: Promise.resolve({ token: rawToken }) },
+    );
+    const httpsResponse = await landInvitation(
+      new Request("https://localhost:3001/invite/raw-token"),
+      { params: Promise.resolve({ token: rawToken }) },
+    );
+
+    expect(loopbackResponse.headers.get("set-cookie")).not.toContain(
+      "Secure",
+    );
+    expect(publicHttpResponse.headers.get("set-cookie")).toContain(
       "Secure",
     );
     expect(httpsResponse.headers.get("set-cookie")).toContain("Secure");

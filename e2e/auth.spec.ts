@@ -152,7 +152,7 @@ test.describe("Authentication and legacy group access", () => {
     await expect(page.getByRole("link", { name: /Austin 2026/i })).toHaveCount(0);
   });
 
-  test("a registered user can share a new group with another registered user", async ({
+  test("a registered account can share a new group with another registered account", async ({
     browser,
   }) => {
     const suffix = `${Date.now()}-${Math.round(Math.random() * 10_000)}`;
@@ -442,7 +442,7 @@ test.describe("Pending group invitations", () => {
         displayName: `Mismatch Owner ${suffix}`,
         email: `mismatch-owner-${suffix}@example.com`,
       });
-      await createInvitationGroup(ownerPage, groupName);
+      const groupPath = await createInvitationGroup(ownerPage, groupName);
 
       await ownerPage.getByLabel("Email").fill(targetEmail);
       await ownerPage.getByRole("button", { name: "Share Group" }).click();
@@ -477,6 +477,41 @@ test.describe("Pending group invitations", () => {
       ).toBeVisible();
       await expect(mismatchedPage).not.toHaveURL(/\/invite\//);
       await expect(mismatchedPage.locator("body")).not.toContainText(invitationPath);
+
+      await mismatchedPage
+        .getByRole("link", { name: "Create an account" })
+        .click();
+      await expect(mismatchedPage).toHaveURL("/signup");
+      await expect(
+        mismatchedPage.getByText("Create an account to accept your group invitation."),
+      ).toBeVisible();
+      await mismatchedPage.getByLabel("Name").fill(`Invited Account ${suffix}`);
+      await mismatchedPage.getByLabel("Email").fill(targetEmail);
+      await mismatchedPage.getByLabel("Password").fill("password123");
+      await mismatchedPage
+        .getByRole("button", { name: "Create Account" })
+        .click();
+
+      await expect(mismatchedPage).toHaveURL(groupPath);
+      await expect(
+        mismatchedPage.getByRole("heading", { name: groupName }),
+      ).toBeVisible();
+      await expect(
+        mismatchedPage.getByRole("heading", { name: "App Access" }),
+      ).toHaveCount(0);
+      await expect(
+        mismatchedPage.getByRole("button", { name: "Delete group" }),
+      ).toHaveCount(0);
+      await expect(mismatchedPage.locator("body")).not.toContainText(invitationPath);
+
+      await ownerPage.reload();
+      await expect(pendingInvitationRow(ownerPage, targetEmail)).toHaveCount(0);
+      const targetAccountRow = accountAccessRow(ownerPage, targetEmail);
+      await expect(
+        targetAccountRow.getByText(targetEmail, { exact: true }),
+      ).toBeVisible();
+      await expect(targetAccountRow.getByLabel("Ledger member")).toHaveValue("");
+      await expect(appAccessSection(ownerPage)).not.toContainText(invitationPath);
     } finally {
       await mismatchedContext.close();
       await ownerContext.close();
