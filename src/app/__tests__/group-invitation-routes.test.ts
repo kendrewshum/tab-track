@@ -172,6 +172,30 @@ describe("GET /invite/[token]", () => {
     },
   );
 
+  it("sets Secure from the invitation request protocol", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const now = 1_800_000_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    mocks.inspectGroupInvitation.mockResolvedValue({
+      kind: "active",
+      expiresAt: now + 60_000,
+    });
+
+    const httpResponse = await landInvitation(
+      new Request("http://localhost:3001/invite/raw-token"),
+      { params: Promise.resolve({ token: rawToken }) },
+    );
+    const httpsResponse = await landInvitation(
+      new Request(requestUrl),
+      { params: Promise.resolve({ token: rawToken }) },
+    );
+
+    expect(httpResponse.headers.get("set-cookie")).not.toContain(
+      "Secure",
+    );
+    expect(httpsResponse.headers.get("set-cookie")).toContain("Secure");
+  });
+
   it("does not set a cookie with less than one whole second remaining", async () => {
     const now = 1_800_000_000_000;
     vi.spyOn(Date, "now").mockReturnValue(now);
