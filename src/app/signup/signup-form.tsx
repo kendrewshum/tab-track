@@ -24,9 +24,17 @@ export function SignupForm({
           role="status"
         >
           {useAppInviteCode
-            ? "Use your app invite code to create your account. Your group invitation will remain available."
+            ? "Use your app invite code to create your account. Your group invitation will not be used."
             : "Create an account to accept your group invitation."}
         </p>
+      ) : null}
+
+      {useAppInviteCode ? (
+        <input
+          type="hidden"
+          name="_signupIntent"
+          value="app-invite-code"
+        />
       ) : null}
 
       <div>

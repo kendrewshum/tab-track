@@ -394,10 +394,13 @@ function credentialsForm(
   return formData;
 }
 
-function signupForm(inviteCode = "") {
+function signupForm(inviteCode = "", intent?: string) {
   const formData = credentialsForm();
   formData.set("displayName", "Friend");
   formData.set("inviteCode", inviteCode);
+  if (intent !== undefined) {
+    formData.set("_signupIntent", intent);
+  }
   return formData;
 }
 
@@ -580,22 +583,24 @@ describe("invitation-aware authentication actions", () => {
     );
   });
 
-  test("accepts the app invite code when a stale group invitation is unauthorized", async () => {
+  test("uses explicit app-code intent without following a stale group invitation", async () => {
     cookieStore = requestCookieStore(rawToken);
     mocks.cookies.mockResolvedValue(cookieStore);
     mocks.isInvitationAuthorizedForSignup.mockResolvedValue(false);
 
     await expect(
-      signupAction({}, signupForm("app-invite")),
+      signupAction({}, signupForm("app-invite", "app-invite-code")),
     ).resolves.toEqual({});
 
-    expect(mocks.isInvitationAuthorizedForSignup).toHaveBeenCalledTimes(1);
+    expect(mocks.isInvitationAuthorizedForSignup).not.toHaveBeenCalled();
     expect(mocks.createUser).toHaveBeenCalledTimes(1);
     expect(mocks.signIn).toHaveBeenCalledWith(
       "credentials",
-      expect.objectContaining({ redirectTo: "/invite/claim" }),
+      expect.objectContaining({ redirectTo: "/" }),
     );
-    expect(cookieStore.delete).not.toHaveBeenCalled();
+    expect(cookieStore.delete).toHaveBeenCalledWith(
+      GROUP_INVITATION_COOKIE_NAME,
+    );
   });
 
   test("keeps signup unavailable when neither invitation path is configured", async () => {
@@ -743,6 +748,9 @@ describe("invitation-aware authentication pages", () => {
     const inviteCode = collectElements(revealedForm).find(
       (element) => element.props.name === "inviteCode",
     );
+    const signupIntent = collectElements(revealedForm).find(
+      (element) => element.props.name === "_signupIntent",
+    );
     const status = collectElements(revealedForm).find(
       (element) => element.props.role === "status",
     );
@@ -751,6 +759,12 @@ describe("invitation-aware authentication pages", () => {
       expect.objectContaining({
         id: "signup-invite-code",
         required: true,
+      }),
+    );
+    expect(signupIntent?.props).toEqual(
+      expect.objectContaining({
+        type: "hidden",
+        value: "app-invite-code",
       }),
     );
     expect(textContent(status)).toContain(

@@ -98,9 +98,15 @@ export async function signupAction(
     return { error: "Authentication is not configured yet. Add AUTH_SECRET in Vercel." };
   }
 
-  const invitationToken = (await cookies()).get(
+  const cookieStore = await cookies();
+  const storedInvitationToken = cookieStore.get(
     GROUP_INVITATION_COOKIE_NAME,
   )?.value;
+  const useAppInviteCode =
+    formData.get("_signupIntent") === "app-invite-code";
+  const invitationToken = useAppInviteCode
+    ? undefined
+    : storedInvitationToken;
   if (!invitationToken) {
     const configError = getAuthConfigError({
       AUTH_SECRET: secret,
@@ -147,6 +153,10 @@ export async function signupAction(
 
   if (!result.success) {
     return { error: result.message };
+  }
+
+  if (useAppInviteCode && storedInvitationToken) {
+    cookieStore.delete(GROUP_INVITATION_COOKIE_NAME);
   }
 
   try {
