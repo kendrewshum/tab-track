@@ -42,13 +42,14 @@ export async function GET(
       return privateRedirect(request, UNAVAILABLE_PATH);
     }
 
-    const maxAge = Math.max(
-      1,
-      Math.min(
-        30 * 60,
-        Math.floor((inspection.expiresAt - now) / 1_000),
-      ),
+    const remainingSeconds = Math.floor(
+      (inspection.expiresAt - now) / 1_000,
     );
+    if (remainingSeconds < 1) {
+      return privateRedirect(request, UNAVAILABLE_PATH);
+    }
+
+    const maxAge = Math.min(30 * 60, remainingSeconds);
     const response = privateRedirect(request, "/invite/claim");
     response.cookies.set(
       GROUP_INVITATION_COOKIE_NAME,

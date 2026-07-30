@@ -132,8 +132,8 @@ describe("GET /invite/[token]", () => {
       expectedMaxAge: 1_234,
     },
     {
-      label: "at least one second",
-      remainingMs: 500,
+      label: "one whole remaining second",
+      remainingMs: 1_000,
       expectedMaxAge: 1,
     },
   ])(
@@ -171,6 +171,26 @@ describe("GET /invite/[token]", () => {
       );
     },
   );
+
+  it("does not set a cookie with less than one whole second remaining", async () => {
+    const now = 1_800_000_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    mocks.inspectGroupInvitation.mockResolvedValue({
+      kind: "active",
+      expiresAt: now + 999,
+    });
+
+    const response = await landInvitation(
+      new Request(requestUrl),
+      { params: Promise.resolve({ token: rawToken }) },
+    );
+
+    expectPrivateRedirect(
+      response,
+      "https://tabtrack.example/invite/result?status=unavailable",
+    );
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
 
   it("returns a sanitized result when the invitation is unavailable", async () => {
     mocks.inspectGroupInvitation.mockResolvedValue({
