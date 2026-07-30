@@ -1,5 +1,3 @@
-import { File } from "node:buffer";
-
 import { describe, expect, test } from "vitest";
 
 import {
@@ -7,7 +5,7 @@ import {
   parseGroupInvitationTarget,
 } from "@/lib/group-access-management-form";
 
-function formWith(name: string, value?: string | File): FormData {
+function formWith(name: string, value?: string | Blob): FormData {
   const formData = new FormData();
 
   if (value !== undefined) {
@@ -29,7 +27,7 @@ describe("parseGroupAccessTarget", () => {
     ["missing", undefined],
     ["empty", ""],
     ["whitespace-only", "  "],
-    ["a File", new File([], "access.txt")],
+    ["a File", new Blob()],
   ])("rejects a %s access ID", (_description, accessId) => {
     expect(parseGroupAccessTarget(formWith("accessId", accessId))).toEqual({
       success: false,
@@ -51,7 +49,7 @@ describe("parseGroupInvitationTarget", () => {
     ["missing", undefined],
     ["empty", ""],
     ["whitespace-only", "  "],
-    ["a File", new File([], "invitation.txt")],
+    ["a File", new Blob()],
   ])("rejects a %s invitation ID", (_description, invitationId) => {
     expect(
       parseGroupInvitationTarget(formWith("invitationId", invitationId))
