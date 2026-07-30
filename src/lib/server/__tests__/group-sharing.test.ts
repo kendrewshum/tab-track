@@ -412,6 +412,7 @@ describe("shareGroup", () => {
       claimedAt: 12,
       claimedByUserId: "registered",
       cancelledAt: 34,
+      cancelledByUserId: null,
       createdAt: now,
       updatedAt: now,
     };
