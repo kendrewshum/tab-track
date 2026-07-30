@@ -5,13 +5,18 @@ import { revalidatePath } from "next/cache";
 
 import { signIn, signOut } from "@/auth";
 import { db } from "@/db";
-import { groupAccess } from "@/db/schema";
 import { getAuthConfigError, isAuthSecretConfigured } from "@/lib/auth-config";
+import { parseGroupInvitationForm } from "@/lib/group-invitation-form";
+import { generateGroupInvitationToken } from "@/lib/group-invitation-token";
 import { parseMemberAccountLinkForm } from "@/lib/member-account-link-form";
 import { hashPassword } from "@/lib/password";
 import { createAuthAttemptStore } from "@/lib/server/auth-attempt-store";
 import { createAuthRateLimiter } from "@/lib/server/auth-rate-limit";
 import { getTrustedRequestSource } from "@/lib/server/auth-request-source";
+import {
+  createGroupSharingStore,
+  shareGroup,
+} from "@/lib/server/group-sharing";
 import {
   createMemberAccountLinkStore,
   setAccountMemberLink,
@@ -28,6 +33,7 @@ export type AuthFormState = {
 export type InviteFormState = {
   error?: string;
   success?: string;
+  invitationPath?: string;
 };
 
 export type MemberAccountLinkFormState = {
@@ -139,38 +145,52 @@ export async function inviteUserToGroupAction(
 ): Promise<InviteFormState> {
   await requireGroupOwner(groupId);
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!email) {
-    return { error: "Enter an email address." };
+  const parsed = parseGroupInvitationForm(formData);
+  if (!parsed.success) {
+    return { error: "Enter a valid email address and ledger member." };
   }
 
-  const user = await db.query.users.findFirst({
-    where: (table, { eq }) => eq(table.email, email),
-  });
-
-  if (!user) {
-    return { error: "That email does not belong to a registered account yet." };
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    return { error: "Authentication is not configured yet. Add AUTH_SECRET in Vercel." };
   }
 
-  const existingAccess = await db.query.groupAccess.findFirst({
-    where: (table, { and, eq }) => and(eq(table.groupId, groupId), eq(table.userId, user.id)),
+  const result = await shareGroup(createGroupSharingStore(db), {
+    groupId,
+    ...parsed.data,
+    secret,
+    now: Date.now(),
+    generateId,
+    generateToken: generateGroupInvitationToken,
   });
 
-  if (existingAccess) {
+  if (result.kind === "invalid-member") {
+    return { error: "Choose a valid ledger member." };
+  }
+
+  if (result.kind === "already-shared") {
     return { error: "That user already has access to this group." };
   }
-
-  await db.insert(groupAccess).values({
-    id: generateId(),
-    groupId,
-    userId: user.id,
-    role: "member",
-  });
 
   revalidatePath("/");
   revalidatePath(`/groups/${groupId}`);
 
-  return { success: `Shared with ${user.email}.` };
+  if (result.kind === "invitation-created") {
+    return {
+      success: `Invitation created for ${result.email}.`,
+      invitationPath: result.invitationPath,
+    };
+  }
+
+  if (!result.memberLinked && parsed.data.memberId !== null) {
+    return {
+      success:
+        `Shared with ${result.email}. ` +
+        "Access was granted, but no ledger member was linked.",
+    };
+  }
+
+  return { success: `Shared with ${result.email}.` };
 }
 
 export async function setMemberAccountLinkAction(

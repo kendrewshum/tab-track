@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 import { Plus, ArrowRight, Pencil } from "lucide-react";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -11,6 +11,7 @@ import {
   expenseSplits,
   expenses,
   groupAccess,
+  groupInvitations,
   groups,
   members,
   settlements,
@@ -18,6 +19,7 @@ import {
 } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { buildPendingInvitationRows } from "@/lib/group-invitations";
 import { buildAccountMemberLinkRows } from "@/lib/member-account-links";
 import { requireGroupAccess } from "@/lib/server/session";
 import {
@@ -67,9 +69,12 @@ export default async function GroupPage({
       .orderBy(expenses.date),
     db.select().from(settlements).where(eq(settlements.groupId, id)),
   ]);
-  const accountMemberLinkRows = canManageGroup
-    ? buildAccountMemberLinkRows(
-        await db
+
+  const ownerManagementData = canManageGroup
+    ? await (async () => {
+        const invitationQueryNow = Date.now();
+        const [accessRows, invitationRows] = await Promise.all([
+          db
           .select({
             accessId: groupAccess.id,
             userId: groupAccess.userId,
@@ -79,8 +84,54 @@ export default async function GroupPage({
           .from(groupAccess)
           .innerJoin(users, eq(groupAccess.userId, users.id))
           .where(eq(groupAccess.groupId, id)),
-        groupMembers
-      )
+          db
+            .select({
+              id: groupInvitations.id,
+              email: groupInvitations.email,
+              expiresAt: groupInvitations.expiresAt,
+              memberName: members.name,
+            })
+            .from(groupInvitations)
+            .leftJoin(
+              members,
+              and(
+                eq(groupInvitations.memberId, members.id),
+                eq(members.groupId, id),
+              ),
+            )
+            .where(
+              and(
+                eq(groupInvitations.groupId, id),
+                isNull(groupInvitations.claimedAt),
+                isNull(groupInvitations.cancelledAt),
+                gt(groupInvitations.expiresAt, invitationQueryNow),
+              ),
+            ),
+        ]);
+
+        return {
+          accountMemberLinkRows: buildAccountMemberLinkRows(
+            accessRows,
+            groupMembers,
+          ),
+          pendingInvitationRows: buildPendingInvitationRows(invitationRows),
+        };
+      })()
+    : {
+        accountMemberLinkRows: [],
+        pendingInvitationRows: [],
+      };
+  const { accountMemberLinkRows, pendingInvitationRows } = ownerManagementData;
+  const inviteMemberChoices = canManageGroup
+    ? groupMembers
+        .filter((member) => member.userId === null)
+        .map((member) => ({ id: member.id, name: member.name }))
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name, "en", {
+              sensitivity: "base",
+            }) || left.id.localeCompare(right.id),
+        )
     : [];
 
   const groupExpenses = allGroupExpenses.filter((expense) => expense.deletedAt === null);
@@ -439,9 +490,10 @@ export default async function GroupPage({
           <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
           <div className="bg-white border border-slate-200 rounded-xl p-4">
             <p className="text-sm text-slate-500 mb-3">
-              Share this group with friends who already created an account.
+              Registered accounts receive access immediately. Everyone else receives an
+              invitation link to create an account.
             </p>
-            <InviteUserForm groupId={id} />
+            <InviteUserForm groupId={id} choices={inviteMemberChoices} />
             <div className="mt-4 border-t border-slate-100 pt-4">
               <h3 className="text-sm font-medium text-slate-900">Accounts</h3>
               <div className="mt-3 space-y-3">
@@ -467,6 +519,38 @@ export default async function GroupPage({
                   </div>
                 ))}
               </div>
+              {pendingInvitationRows.length > 0 ? (
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <h3 className="text-sm font-medium text-slate-900">
+                    Pending invitations
+                  </h3>
+                  <div className="mt-3 space-y-2">
+                    {pendingInvitationRows.map((invitation) => (
+                      <div
+                        key={invitation.id}
+                        className="rounded-lg border border-slate-200 p-3"
+                      >
+                        <p className="break-words text-sm font-medium text-slate-800">
+                          {invitation.email}
+                        </p>
+                        {invitation.memberName ? (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Ledger member: {invitation.memberName}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-slate-500">
+                          Expires{" "}
+                          <time
+                            dateTime={new Date(invitation.expiresAt).toISOString()}
+                          >
+                            {formatPendingInvitationExpiry(invitation.expiresAt)}
+                          </time>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -492,4 +576,16 @@ function parseActivityCountSearchParam(value: string | string[] | undefined): nu
   }
 
   return Number.parseInt(value, 10);
+}
+
+function formatPendingInvitationExpiry(expiresAt: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(new Date(expiresAt));
 }
