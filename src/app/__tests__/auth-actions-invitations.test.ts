@@ -1,13 +1,27 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as React from "react";
+import { AuthError } from "next-auth";
 
 const mocks = vi.hoisted(() => ({
+  cookies: vi.fn(),
+  createAuthAttemptStore: vi.fn(),
+  createAuthRateLimiter: vi.fn(),
+  createGroupInvitationClaimStore: vi.fn(),
   createGroupSharingStore: vi.fn(),
+  createUser: vi.fn(),
+  findUserByEmail: vi.fn(),
   generateGroupInvitationToken: vi.fn(),
   generateId: vi.fn(),
+  getCurrentUser: vi.fn(),
+  getTrustedRequestSource: vi.fn(),
+  hashPassword: vi.fn(),
+  isInvitationAuthorizedForSignup: vi.fn(),
   revalidatePath: vi.fn(),
+  redirect: vi.fn(),
   requireGroupOwner: vi.fn(),
   shareGroup: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
   useActionState: vi.fn(),
   useEffect: vi.fn(),
   useId: vi.fn(),
@@ -30,12 +44,21 @@ vi.mock("next-auth", () => ({
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
 }));
+vi.mock("next/headers", () => ({
+  cookies: mocks.cookies,
+}));
+vi.mock("next/navigation", () => ({
+  redirect: mocks.redirect,
+}));
 vi.mock("@/auth", () => ({
-  signIn: vi.fn(),
-  signOut: vi.fn(),
+  signIn: mocks.signIn,
+  signOut: mocks.signOut,
 }));
 vi.mock("@/db", () => ({
   db: { mocked: "db" },
+}));
+vi.mock("@/lib/password", () => ({
+  hashPassword: mocks.hashPassword,
 }));
 vi.mock("@/lib/group-invitation-token", async (importOriginal) => {
   const original =
@@ -49,17 +72,45 @@ vi.mock("@/lib/server/group-sharing", () => ({
   createGroupSharingStore: mocks.createGroupSharingStore,
   shareGroup: mocks.shareGroup,
 }));
+vi.mock("@/lib/server/auth-attempt-store", () => ({
+  createAuthAttemptStore: mocks.createAuthAttemptStore,
+}));
+vi.mock("@/lib/server/auth-rate-limit", () => ({
+  createAuthRateLimiter: mocks.createAuthRateLimiter,
+}));
+vi.mock("@/lib/server/auth-request-source", () => ({
+  getTrustedRequestSource: mocks.getTrustedRequestSource,
+}));
+vi.mock("@/lib/server/group-invitation-claims", () => ({
+  createGroupInvitationClaimStore: mocks.createGroupInvitationClaimStore,
+  isInvitationAuthorizedForSignup: mocks.isInvitationAuthorizedForSignup,
+}));
 vi.mock("@/lib/server/session", () => ({
+  getCurrentUser: mocks.getCurrentUser,
   requireGroupOwner: mocks.requireGroupOwner,
+}));
+vi.mock("@/lib/server/users", () => ({
+  createUser: mocks.createUser,
+  findUserByEmail: mocks.findUserByEmail,
 }));
 vi.mock("@/lib/utils", () => ({
   generateId: mocks.generateId,
 }));
 
-import { inviteUserToGroupAction } from "@/app/auth-actions";
+import {
+  inviteUserToGroupAction,
+  loginAction,
+  signupAction,
+} from "@/app/auth-actions";
 import { InviteUserForm } from "@/app/groups/[id]/invite-user-form";
+import { LoginForm } from "@/app/login/login-form";
+import LoginPage from "@/app/login/page";
+import { SignupForm } from "@/app/signup/signup-form";
+import SignupPage from "@/app/signup/page";
+import { GROUP_INVITATION_COOKIE_NAME } from "@/lib/server/group-invitation-cookie";
 
 type ElementLike = {
+  type?: unknown;
   props: Record<string, unknown> & { children?: unknown };
 };
 
@@ -330,6 +381,341 @@ describe("inviteUserToGroupAction", () => {
     ).resolves.toEqual({
       error: "That user already has access to this group.",
     });
+  });
+});
+
+function credentialsForm(
+  email = "friend@example.com",
+  password = "password123",
+) {
+  const formData = new FormData();
+  formData.set("email", email);
+  formData.set("password", password);
+  return formData;
+}
+
+function signupForm(inviteCode = "") {
+  const formData = credentialsForm();
+  formData.set("displayName", "Friend");
+  formData.set("inviteCode", inviteCode);
+  return formData;
+}
+
+function requestCookieStore(rawToken?: string) {
+  return {
+    get: vi.fn((name: string) =>
+      name === GROUP_INVITATION_COOKIE_NAME && rawToken
+        ? { value: rawToken }
+        : undefined,
+    ),
+    delete: vi.fn(),
+  };
+}
+
+describe("invitation-aware authentication actions", () => {
+  const rawToken = "raw-cookie-invitation-token";
+  const reservation = { buckets: [] };
+  let cookieStore: ReturnType<typeof requestCookieStore>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret");
+    vi.stubEnv("APP_INVITE_CODE", "app-invite");
+    vi.spyOn(Date, "now").mockReturnValue(1_725_000_000_000);
+
+    cookieStore = requestCookieStore();
+    mocks.cookies.mockResolvedValue(cookieStore);
+    mocks.createAuthAttemptStore.mockReturnValue("attempt-store");
+    mocks.createAuthRateLimiter.mockReturnValue({
+      reserve: vi.fn().mockResolvedValue({
+        allowed: true,
+        reservation,
+      }),
+      succeed: vi.fn().mockResolvedValue(undefined),
+    });
+    mocks.createGroupInvitationClaimStore.mockReturnValue("claim-store");
+    mocks.createUser.mockResolvedValue(undefined);
+    mocks.findUserByEmail.mockResolvedValue(null);
+    mocks.getTrustedRequestSource.mockResolvedValue("203.0.113.10");
+    mocks.hashPassword.mockResolvedValue("password-hash");
+    mocks.isInvitationAuthorizedForSignup.mockResolvedValue(false);
+    mocks.signIn.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.mocked(Date.now).mockRestore();
+  });
+
+  test("redirects a successful invited login to the claim route without forwarding the token", async () => {
+    cookieStore = requestCookieStore(rawToken);
+    mocks.cookies.mockResolvedValue(cookieStore);
+    const formData = credentialsForm();
+
+    await expect(loginAction({}, formData)).resolves.toEqual({});
+
+    expect(cookieStore.get).toHaveBeenCalledWith(
+      GROUP_INVITATION_COOKIE_NAME,
+    );
+    expect(mocks.signIn).toHaveBeenCalledWith("credentials", {
+      email: "friend@example.com",
+      password: "password123",
+      redirectTo: "/invite/claim",
+    });
+    expect(JSON.stringify(mocks.signIn.mock.calls)).not.toContain(rawToken);
+    expect([...formData.values()]).not.toContain(rawToken);
+  });
+
+  test("keeps the ordinary login redirect when no invitation cookie exists", async () => {
+    await expect(
+      loginAction({}, credentialsForm()),
+    ).resolves.toEqual({});
+
+    expect(mocks.signIn).toHaveBeenCalledWith(
+      "credentials",
+      expect.objectContaining({ redirectTo: "/" }),
+    );
+  });
+
+  test("keeps missing authentication configuration sanitized", async () => {
+    vi.stubEnv("AUTH_SECRET", "");
+    await expect(
+      loginAction({}, credentialsForm()),
+    ).resolves.toEqual({
+      error: "Authentication is not configured yet. Add AUTH_SECRET in Vercel.",
+    });
+    expect(mocks.cookies).not.toHaveBeenCalled();
+  });
+
+  test("keeps malformed login credentials sanitized", async () => {
+    await expect(
+      loginAction({}, credentialsForm("", "")),
+    ).resolves.toEqual({
+      error: "Enter your email and password.",
+    });
+    expect(mocks.cookies).not.toHaveBeenCalled();
+  });
+
+  test("keeps login AuthError details sanitized", async () => {
+    cookieStore = requestCookieStore(rawToken);
+    mocks.cookies.mockResolvedValue(cookieStore);
+    mocks.signIn.mockRejectedValue(new AuthError());
+    await expect(
+      loginAction({}, credentialsForm()),
+    ).resolves.toEqual({
+      error:
+        "That email and password do not match, or too many attempts were made. Try again later.",
+    });
+    expect(cookieStore.delete).not.toHaveBeenCalled();
+  });
+
+  test("creates an account with a matching group invitation when the app code is unset", async () => {
+    vi.stubEnv("APP_INVITE_CODE", "");
+    cookieStore = requestCookieStore(rawToken);
+    mocks.cookies.mockResolvedValue(cookieStore);
+    mocks.isInvitationAuthorizedForSignup.mockResolvedValue(true);
+
+    await expect(signupAction({}, signupForm())).resolves.toEqual({});
+
+    expect(mocks.isInvitationAuthorizedForSignup).toHaveBeenCalledWith(
+      "claim-store",
+      {
+        rawToken,
+        secret: "test-auth-secret",
+        email: "friend@example.com",
+        now: 1_725_000_000_000,
+      },
+    );
+    expect(mocks.createUser).toHaveBeenCalledWith({
+      email: "friend@example.com",
+      displayName: "Friend",
+      passwordHash: "password-hash",
+    });
+    expect(mocks.signIn).toHaveBeenCalledWith("credentials", {
+      email: "friend@example.com",
+      password: "password123",
+      redirectTo: "/invite/claim",
+    });
+    expect(cookieStore.delete).not.toHaveBeenCalled();
+    expect(JSON.stringify(mocks.signIn.mock.calls)).not.toContain(rawToken);
+  });
+
+  test.each([
+    ["mismatched, expired, or claimed", false],
+    ["authorization failure", new Error("invitation database details")],
+  ])("does not bypass signup for %s invitations", async (_label, outcome) => {
+    vi.stubEnv("APP_INVITE_CODE", "");
+    cookieStore = requestCookieStore(rawToken);
+    mocks.cookies.mockResolvedValue(cookieStore);
+    if (outcome instanceof Error) {
+      mocks.isInvitationAuthorizedForSignup.mockRejectedValue(outcome);
+    } else {
+      mocks.isInvitationAuthorizedForSignup.mockResolvedValue(outcome);
+    }
+
+    await expect(signupAction({}, signupForm())).resolves.toEqual({
+      error: "That invite code is not valid.",
+    });
+
+    expect(mocks.createUser).not.toHaveBeenCalled();
+    expect(mocks.signIn).not.toHaveBeenCalled();
+    expect(cookieStore.delete).not.toHaveBeenCalled();
+  });
+
+  test("still requires the ordinary app invite code without an invitation cookie", async () => {
+    await expect(signupAction({}, signupForm("wrong"))).resolves.toEqual({
+      error: "That invite code is not valid.",
+    });
+
+    expect(mocks.isInvitationAuthorizedForSignup).not.toHaveBeenCalled();
+    expect(mocks.createUser).not.toHaveBeenCalled();
+
+    await expect(
+      signupAction({}, signupForm("app-invite")),
+    ).resolves.toEqual({});
+    expect(mocks.createUser).toHaveBeenCalledTimes(1);
+    expect(mocks.signIn).toHaveBeenLastCalledWith(
+      "credentials",
+      expect.objectContaining({ redirectTo: "/" }),
+    );
+  });
+
+  test("keeps signup unavailable when neither invitation path is configured", async () => {
+    vi.stubEnv("APP_INVITE_CODE", "");
+
+    await expect(signupAction({}, signupForm())).resolves.toEqual({
+      error: "Signup is not configured yet. Add APP_INVITE_CODE in Vercel.",
+    });
+
+    expect(mocks.isInvitationAuthorizedForSignup).not.toHaveBeenCalled();
+    expect(mocks.createUser).not.toHaveBeenCalled();
+  });
+
+  test("preserves the invitation cookie and sanitizes automatic sign-in failure", async () => {
+    cookieStore = requestCookieStore(rawToken);
+    mocks.cookies.mockResolvedValue(cookieStore);
+    mocks.isInvitationAuthorizedForSignup.mockResolvedValue(true);
+    mocks.signIn.mockRejectedValue(new AuthError());
+
+    await expect(signupAction({}, signupForm())).resolves.toEqual({
+      error: "Your account was created, but we could not sign you in.",
+    });
+
+    expect(mocks.createUser).toHaveBeenCalledTimes(1);
+    expect(cookieStore.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe("invitation-aware authentication pages", () => {
+  const rawToken = "never-render-this-invitation-token";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getCurrentUser.mockResolvedValue(null);
+    mocks.useActionState.mockReturnValue([{}, vi.fn(), false]);
+    vi.stubGlobal("React", React);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test.each([
+    [
+      "login",
+      LoginPage,
+      LoginForm,
+      "Sign in to accept your group invitation.",
+      "/signup",
+    ],
+    [
+      "signup",
+      SignupPage,
+      SignupForm,
+      "Create an account to accept your group invitation.",
+      "/login",
+    ],
+  ])(
+    "passes only cookie presence to the %s form and renders an accessible banner",
+    async (_label, Page, Form, banner, accountLink) => {
+      const cookieStore = requestCookieStore(rawToken);
+      mocks.cookies.mockResolvedValue(cookieStore);
+
+      const page = await Page();
+      const formElement = collectElements(page).find(
+        (element) => element.type === Form,
+      );
+      const form = Form({
+        hasGroupInvitation: true,
+      } as Parameters<typeof Form>[0]);
+      const status = collectElements(form).find(
+        (element) => element.props.role === "status",
+      );
+
+      expect(cookieStore.get).toHaveBeenCalledWith(
+        GROUP_INVITATION_COOKIE_NAME,
+      );
+      expect(formElement?.props).toEqual({ hasGroupInvitation: true });
+      expect(textContent(status)).toBe(banner);
+      expect(textContent(form)).not.toContain(rawToken);
+      expect(
+        collectElements(form).find(
+          (element) => element.props.href === accountLink,
+        ),
+      ).toBeDefined();
+    },
+  );
+
+  test("shows the invite code only for ordinary signup", () => {
+    mocks.useActionState.mockReturnValue([{}, vi.fn(), false]);
+
+    const ordinaryForm = SignupForm({
+      hasGroupInvitation: false,
+    } as Parameters<typeof SignupForm>[0]);
+    const invitedForm = SignupForm({
+      hasGroupInvitation: true,
+    } as Parameters<typeof SignupForm>[0]);
+
+    expect(
+      collectElements(ordinaryForm).some(
+        (element) => element.props.name === "inviteCode",
+      ),
+    ).toBe(true);
+    expect(
+      collectElements(invitedForm).some(
+        (element) => element.props.name === "inviteCode",
+      ),
+    ).toBe(false);
+  });
+
+  test("does not instruct invited signup users to enter a hidden code", async () => {
+    mocks.cookies.mockResolvedValue(requestCookieStore(rawToken));
+
+    const page = await SignupPage();
+
+    expect(textContent(page)).toContain(
+      "Set up your account, then continue to your shared group.",
+    );
+    expect(textContent(page)).not.toContain("Use the shared invite code");
+  });
+
+  test.each([
+    ["login", LoginPage],
+    ["signup", SignupPage],
+  ])("keeps the authenticated %s redirect ahead of cookie handling", async (
+    _label,
+    Page,
+  ) => {
+    const redirectError = new Error("NEXT_REDIRECT");
+    mocks.getCurrentUser.mockResolvedValue({ id: "user-1" });
+    mocks.redirect.mockImplementation(() => {
+      throw redirectError;
+    });
+
+    await expect(Page()).rejects.toBe(redirectError);
+
+    expect(mocks.redirect).toHaveBeenCalledWith("/");
+    expect(mocks.cookies).not.toHaveBeenCalled();
   });
 });
 

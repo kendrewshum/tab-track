@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
+import { GROUP_INVITATION_COOKIE_NAME } from "@/lib/server/group-invitation-cookie";
 import { getCurrentUser } from "@/lib/server/session";
 import { LoginForm } from "./login-form";
 
@@ -11,6 +13,10 @@ export default async function LoginPage() {
     redirect("/");
   }
 
+  const hasGroupInvitation = Boolean(
+    (await cookies()).get(GROUP_INVITATION_COOKIE_NAME)?.value,
+  );
+
   return (
     <div className="max-w-md mx-auto pt-8">
       <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-sm">
@@ -20,7 +26,7 @@ export default async function LoginPage() {
             Sign in to see the groups that belong to you.
           </p>
         </div>
-        <LoginForm />
+        <LoginForm hasGroupInvitation={hasGroupInvitation} />
       </div>
     </div>
   );

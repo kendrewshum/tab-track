@@ -32,6 +32,7 @@ type SignupAccountDependencies = {
     displayName: string;
     passwordHash: string;
   }): Promise<unknown>;
+  authorizeAlternativeInvite?(normalizedEmail: string): Promise<boolean>;
 };
 
 type SignupAccountResult =
@@ -62,6 +63,32 @@ export async function createSignupAccountAttempt(
     return { success: false, message: SIGNUP_UNAVAILABLE_MESSAGE };
   }
 
+  const basicValidation = validateSignupInput(
+    {
+      email: input.email,
+      displayName: input.displayName,
+      password: input.password,
+      inviteCode: input.inviteCode,
+    },
+    input.expectedInviteCode,
+    { alternativeInviteAuthorized: true },
+  );
+  if (!basicValidation.success) {
+    return { success: false, message: basicValidation.message };
+  }
+
+  let alternativeInviteAuthorized = false;
+  if (dependencies.authorizeAlternativeInvite) {
+    try {
+      alternativeInviteAuthorized =
+        await dependencies.authorizeAlternativeInvite(
+          basicValidation.data.email,
+        );
+    } catch {
+      alternativeInviteAuthorized = false;
+    }
+  }
+
   const validation = validateSignupInput(
     {
       email: input.email,
@@ -70,6 +97,7 @@ export async function createSignupAccountAttempt(
       inviteCode: input.inviteCode,
     },
     input.expectedInviteCode,
+    { alternativeInviteAuthorized },
   );
   if (!validation.success) {
     return { success: false, message: validation.message };

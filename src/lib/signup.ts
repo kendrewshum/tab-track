@@ -21,7 +21,8 @@ type SignupFailure = {
 
 export function validateSignupInput(
   input: SignupInput,
-  expectedInviteCode: string | undefined
+  expectedInviteCode: string | undefined,
+  options: { alternativeInviteAuthorized?: boolean } = {},
 ): SignupSuccess | SignupFailure {
   const email = input.email.trim().toLowerCase();
   const displayName = input.displayName.trim();
@@ -40,7 +41,10 @@ export function validateSignupInput(
     return { success: false, message: "Password must be at least 8 characters." };
   }
 
-  if (!expectedInviteCode || inviteCode !== expectedInviteCode) {
+  if (
+    !options.alternativeInviteAuthorized &&
+    (!expectedInviteCode || inviteCode !== expectedInviteCode)
+  ) {
     return { success: false, message: "That invite code is not valid." };
   }
 

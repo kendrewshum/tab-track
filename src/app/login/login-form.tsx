@@ -7,11 +7,24 @@ import { type AuthFormState, loginAction } from "@/app/auth-actions";
 
 const initialState: AuthFormState = {};
 
-export function LoginForm() {
+export function LoginForm({
+  hasGroupInvitation,
+}: {
+  hasGroupInvitation: boolean;
+}) {
   const [state, action, pending] = useActionState(loginAction, initialState);
 
   return (
     <form action={action} className="space-y-5">
+      {hasGroupInvitation ? (
+        <p
+          className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
+          role="status"
+        >
+          Sign in to accept your group invitation.
+        </p>
+      ) : null}
+
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
         <input

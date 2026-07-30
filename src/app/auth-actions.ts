@@ -2,6 +2,7 @@
 
 import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 
 import { signIn, signOut } from "@/auth";
 import { db } from "@/db";
@@ -13,6 +14,11 @@ import { hashPassword } from "@/lib/password";
 import { createAuthAttemptStore } from "@/lib/server/auth-attempt-store";
 import { createAuthRateLimiter } from "@/lib/server/auth-rate-limit";
 import { getTrustedRequestSource } from "@/lib/server/auth-request-source";
+import { GROUP_INVITATION_COOKIE_NAME } from "@/lib/server/group-invitation-cookie";
+import {
+  createGroupInvitationClaimStore,
+  isInvitationAuthorizedForSignup,
+} from "@/lib/server/group-invitation-claims";
 import {
   createGroupSharingStore,
   shareGroup,
@@ -59,11 +65,15 @@ export async function loginAction(
     return { error: "Enter your email and password." };
   }
 
+  const hasGroupInvitation = Boolean(
+    (await cookies()).get(GROUP_INVITATION_COOKIE_NAME)?.value,
+  );
+
   try {
     await signIn("credentials", {
       email,
       password,
-      redirectTo: "/",
+      redirectTo: hasGroupInvitation ? "/invite/claim" : "/",
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -80,17 +90,22 @@ export async function signupAction(
   _previousState: AuthFormState,
   formData: FormData
 ): Promise<AuthFormState> {
-  const configError = getAuthConfigError({
-    AUTH_SECRET: process.env.AUTH_SECRET,
-    APP_INVITE_CODE: process.env.APP_INVITE_CODE,
-  });
-  if (configError) {
-    return { error: configError };
-  }
-
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
     return { error: "Authentication is not configured yet. Add AUTH_SECRET in Vercel." };
+  }
+
+  const invitationToken = (await cookies()).get(
+    GROUP_INVITATION_COOKIE_NAME,
+  )?.value;
+  if (!invitationToken) {
+    const configError = getAuthConfigError({
+      AUTH_SECRET: secret,
+      APP_INVITE_CODE: process.env.APP_INVITE_CODE,
+    });
+    if (configError) {
+      return { error: configError };
+    }
   }
 
   const result = await createSignupAccountAttempt(
@@ -110,6 +125,20 @@ export async function signupAction(
       findUserByEmail,
       hashPassword,
       createUser,
+      ...(invitationToken
+        ? {
+            authorizeAlternativeInvite: (normalizedEmail: string) =>
+              isInvitationAuthorizedForSignup(
+                createGroupInvitationClaimStore(db),
+                {
+                  rawToken: invitationToken,
+                  secret,
+                  email: normalizedEmail,
+                  now: Date.now(),
+                },
+              ),
+          }
+        : {}),
     },
   );
 
@@ -121,7 +150,7 @@ export async function signupAction(
     await signIn("credentials", {
       email: result.data.email,
       password: result.data.password,
-      redirectTo: "/",
+      redirectTo: invitationToken ? "/invite/claim" : "/",
     });
   } catch (error) {
     if (error instanceof AuthError) {

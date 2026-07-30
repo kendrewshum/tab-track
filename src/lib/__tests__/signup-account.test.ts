@@ -21,8 +21,9 @@ function createDependencies(overrides?: {
   allowed?: boolean;
   existingUser?: { id: string } | null;
   createError?: Error;
+  authorizeAlternativeInvite?: (email: string) => Promise<boolean>;
 }) {
-  return {
+  const dependencies = {
     limiter: {
       reserve: vi.fn().mockResolvedValue({
         allowed: overrides?.allowed ?? true,
@@ -38,6 +39,15 @@ function createDependencies(overrides?: {
       ? vi.fn().mockRejectedValue(overrides.createError)
       : vi.fn().mockResolvedValue(undefined),
   };
+
+  return overrides?.authorizeAlternativeInvite
+    ? {
+        ...dependencies,
+        authorizeAlternativeInvite: vi.fn(
+          overrides.authorizeAlternativeInvite,
+        ),
+      }
+    : dependencies;
 }
 
 describe("signup account throttling", () => {
@@ -129,6 +139,112 @@ describe("signup account throttling", () => {
       success: false,
       message: SIGNUP_UNAVAILABLE_MESSAGE,
     });
+    expect(dependencies.limiter.succeed).not.toHaveBeenCalled();
+  });
+
+  it("authorizes an alternative invitation after reserving and before account creation", async () => {
+    const events: string[] = [];
+    const dependencies = createDependencies({
+      authorizeAlternativeInvite: async (email) => {
+        events.push(`authorize:${email}`);
+        return true;
+      },
+    });
+    dependencies.limiter.reserve.mockImplementation(async () => {
+      events.push("reserve");
+      return { allowed: true, reservation };
+    });
+    dependencies.createUser.mockImplementation(async () => {
+      events.push("create");
+    });
+
+    await expect(
+      createSignupAccountAttempt(
+        {
+          ...input,
+          inviteCode: "",
+          expectedInviteCode: undefined,
+        },
+        dependencies,
+      ),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(events).toEqual([
+      "reserve",
+      "authorize:friend@example.com",
+      "create",
+    ]);
+  });
+
+  it("does not authorize an invitation when the limiter blocks signup", async () => {
+    const dependencies = createDependencies({
+      allowed: false,
+      authorizeAlternativeInvite: async () => true,
+    });
+
+    await expect(
+      createSignupAccountAttempt(
+        {
+          ...input,
+          inviteCode: "",
+          expectedInviteCode: undefined,
+        },
+        dependencies,
+      ),
+    ).resolves.toEqual({
+      success: false,
+      message: SIGNUP_UNAVAILABLE_MESSAGE,
+    });
+
+    expect(dependencies.authorizeAlternativeInvite).not.toHaveBeenCalled();
+  });
+
+  it("does not query invitation authorization for a malformed email", async () => {
+    const dependencies = createDependencies({
+      authorizeAlternativeInvite: async () => true,
+    });
+
+    await expect(
+      createSignupAccountAttempt(
+        {
+          ...input,
+          email: "not-an-email",
+          inviteCode: "",
+          expectedInviteCode: undefined,
+        },
+        dependencies,
+      ),
+    ).resolves.toEqual({
+      success: false,
+      message: "Enter a valid email address.",
+    });
+
+    expect(dependencies.authorizeAlternativeInvite).not.toHaveBeenCalled();
+  });
+
+  it("treats invitation authorization failures as unauthorized and keeps the reservation", async () => {
+    const dependencies = createDependencies({
+      authorizeAlternativeInvite: async () => {
+        throw new Error("database URL and invitation details");
+      },
+    });
+
+    await expect(
+      createSignupAccountAttempt(
+        {
+          ...input,
+          inviteCode: "",
+          expectedInviteCode: undefined,
+        },
+        dependencies,
+      ),
+    ).resolves.toEqual({
+      success: false,
+      message: "That invite code is not valid.",
+    });
+
+    expect(dependencies.findUserByEmail).not.toHaveBeenCalled();
+    expect(dependencies.createUser).not.toHaveBeenCalled();
     expect(dependencies.limiter.succeed).not.toHaveBeenCalled();
   });
 });

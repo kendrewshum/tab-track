@@ -57,4 +57,43 @@ describe("validateSignupInput", () => {
       message: "Password must be at least 8 characters.",
     });
   });
+
+  test("allows an explicitly authorized alternative invitation without an app invite code", () => {
+    const result = validateSignupInput(
+      {
+        email: "  FRIEND@example.com ",
+        displayName: "  Friend Name ",
+        password: "password123",
+        inviteCode: "",
+      },
+      undefined,
+      { alternativeInviteAuthorized: true },
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        email: "friend@example.com",
+        displayName: "Friend Name",
+        password: "password123",
+      },
+    });
+  });
+
+  test("keeps the alternative invitation bypass disabled by default", () => {
+    const result = validateSignupInput(
+      {
+        email: "friend@example.com",
+        displayName: "Friend Name",
+        password: "password123",
+        inviteCode: "",
+      },
+      undefined,
+    );
+
+    expect(result).toEqual({
+      success: false,
+      message: "That invite code is not valid.",
+    });
+  });
 });
