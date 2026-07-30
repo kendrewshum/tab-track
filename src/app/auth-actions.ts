@@ -7,6 +7,10 @@ import { cookies } from "next/headers";
 import { signIn, signOut } from "@/auth";
 import { db } from "@/db";
 import { getAuthConfigError, isAuthSecretConfigured } from "@/lib/auth-config";
+import {
+  parseGroupAccessTarget,
+  parseGroupInvitationTarget,
+} from "@/lib/group-access-management-form";
 import { parseGroupInvitationForm } from "@/lib/group-invitation-form";
 import { generateGroupInvitationToken } from "@/lib/group-invitation-token";
 import { parseMemberAccountLinkForm } from "@/lib/member-account-link-form";
@@ -23,6 +27,11 @@ import {
   createGroupSharingStore,
   shareGroup,
 } from "@/lib/server/group-sharing";
+import {
+  cancelGroupInvitation,
+  createGroupAccessManagementStore,
+  revokeGroupAccess,
+} from "@/lib/server/group-access-management";
 import {
   createMemberAccountLinkStore,
   setAccountMemberLink,
@@ -43,6 +52,11 @@ export type InviteFormState = {
 };
 
 export type MemberAccountLinkFormState = {
+  error?: string;
+  success?: string;
+};
+
+export type AccessManagementFormState = {
   error?: string;
   success?: string;
 };
@@ -266,4 +280,53 @@ export async function setMemberAccountLinkAction(
 
   revalidatePath(`/groups/${groupId}`);
   return { success: "Ledger member updated." };
+}
+
+export async function revokeGroupAccessAction(
+  groupId: string,
+  _previousState: AccessManagementFormState,
+  formData: FormData,
+): Promise<AccessManagementFormState> {
+  await requireGroupOwner(groupId);
+
+  const parsed = parseGroupAccessTarget(formData);
+  if (!parsed.success) {
+    return { error: "We could not remove that access." };
+  }
+
+  const result = await revokeGroupAccess(createGroupAccessManagementStore(db), {
+    groupId,
+    accessId: parsed.data.accessId,
+  });
+
+  if (result.kind === "owner-protected") {
+    return { error: "The group owner cannot be removed." };
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/groups/${groupId}`);
+  return { success: "Access removed." };
+}
+
+export async function cancelGroupInvitationAction(
+  groupId: string,
+  _previousState: AccessManagementFormState,
+  formData: FormData,
+): Promise<AccessManagementFormState> {
+  const { user } = await requireGroupOwner(groupId);
+
+  const parsed = parseGroupInvitationTarget(formData);
+  if (!parsed.success) {
+    return { error: "We could not cancel that invitation." };
+  }
+
+  await cancelGroupInvitation(createGroupAccessManagementStore(db), {
+    groupId,
+    invitationId: parsed.data.invitationId,
+    cancelledByUserId: user.id,
+    now: Date.now(),
+  });
+
+  revalidatePath(`/groups/${groupId}`);
+  return { success: "Invitation cancelled." };
 }
