@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createClient } from "@libsql/client";
+import { LibsqlError } from "@libsql/core/api";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
@@ -341,6 +342,31 @@ describe("shareGroup", () => {
     );
 
     expect(store.isMemberLinkUniqueConflict(broaderConstraint)).toBe(false);
+  });
+
+  it("classifies the exact member conflict shape returned by Turso", async () => {
+    const db = await createTestDatabase();
+    const store = createGroupSharingStore(db);
+    const remoteConflict = new LibsqlError(
+      "SQLite error: UNIQUE constraint failed: members.group_id, members.user_id",
+      "SQLITE_CONSTRAINT",
+    );
+
+    expect(remoteConflict.message).toBe(
+      "SQLITE_CONSTRAINT: SQLite error: UNIQUE constraint failed: members.group_id, members.user_id",
+    );
+    expect(store.isMemberLinkUniqueConflict(remoteConflict)).toBe(true);
+  });
+
+  it("rejects remote member constraints with broader columns", async () => {
+    const db = await createTestDatabase();
+    const store = createGroupSharingStore(db);
+    const remoteConstraint = new LibsqlError(
+      "SQLite error: UNIQUE constraint failed: members.group_id, members.user_id, members.id",
+      "SQLITE_CONSTRAINT",
+    );
+
+    expect(store.isMemberLinkUniqueConflict(remoteConstraint)).toBe(false);
   });
 
   it("propagates unexpected failures so the real transaction rolls back", async () => {

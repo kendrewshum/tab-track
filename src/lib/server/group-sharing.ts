@@ -141,14 +141,31 @@ function isMemberLinkUniqueConflict(error: unknown): boolean {
     return false;
   }
 
-  return (
-    (error.code === "SQLITE_CONSTRAINT" ||
-      error.code === "SQLITE_CONSTRAINT_UNIQUE") &&
-    typeof error.message === "string" &&
-    /^(?:SQLITE_CONSTRAINT(?:_UNIQUE)?:\s*)?UNIQUE constraint failed: members\.group_id, members\.user_id$/i.test(
-      error.message,
-    )
+  if (
+    (error.code !== "SQLITE_CONSTRAINT" &&
+      error.code !== "SQLITE_CONSTRAINT_UNIQUE") ||
+    typeof error.message !== "string"
+  ) {
+    return false;
+  }
+
+  const canonicalMessage =
+    "unique constraint failed: members.group_id, members.user_id";
+  const codePrefixes = ["SQLITE_CONSTRAINT:", "SQLITE_CONSTRAINT_UNIQUE:"];
+  let message = error.message.trim();
+  const codePrefix = codePrefixes.find((prefix) =>
+    message.toLowerCase().startsWith(prefix.toLowerCase()),
   );
+  if (codePrefix) {
+    message = message.slice(codePrefix.length).trimStart();
+  }
+
+  const sqliteErrorPrefix = "SQLite error:";
+  if (message.toLowerCase().startsWith(sqliteErrorPrefix.toLowerCase())) {
+    message = message.slice(sqliteErrorPrefix.length).trimStart();
+  }
+
+  return message.trim().toLowerCase() === canonicalMessage;
 }
 
 export function createGroupSharingStore<
