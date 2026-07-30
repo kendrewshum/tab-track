@@ -2,9 +2,13 @@ import {
   test,
   expect,
   type APIResponse,
+  type Browser,
   type BrowserContext,
+  type BrowserContextOptions,
   type Locator,
   type Page,
+  type Route,
+  type TestInfo,
 } from "@playwright/test";
 import { extractCreatedGroupId } from "../src/lib/group-url";
 import { createTestGroup, fillExpenseBase, signUpAndLogin } from "./helpers";
@@ -60,6 +64,74 @@ async function expectNoHorizontalOverflow(locator: Locator) {
       (element) => element.scrollWidth <= element.clientWidth + 1,
     ),
   ).toBe(true);
+}
+
+async function expectProjectDeviceProfile(page: Page, testInfo: TestInfo) {
+  const {
+    viewport,
+    userAgent,
+    deviceScaleFactor,
+    isMobile,
+    hasTouch,
+  } = testInfo.project.use;
+  const runtimeProfile = await page.evaluate(() => ({
+    deviceScaleFactor: window.devicePixelRatio,
+    hasTouch: "ontouchstart" in window,
+    hasCoarsePointer: window.matchMedia("(pointer: coarse)").matches,
+    userAgent: navigator.userAgent,
+  }));
+
+  expect(page.viewportSize()).toEqual(viewport);
+  expect(runtimeProfile.deviceScaleFactor).toBe(deviceScaleFactor);
+  expect(runtimeProfile.hasTouch).toBe(hasTouch);
+  expect(runtimeProfile.hasCoarsePointer).toBe(hasTouch);
+  expect(runtimeProfile.userAgent).toBe(userAgent);
+
+  if (testInfo.project.name === "iPhone 14") {
+    expect({
+      viewport,
+      deviceScaleFactor,
+      isMobile,
+      hasTouch,
+    }).toEqual({
+      viewport: { width: 390, height: 664 },
+      deviceScaleFactor: 3,
+      isMobile: true,
+      hasTouch: true,
+    });
+  }
+}
+
+function projectBrowserContextOptions(
+  testInfo: TestInfo,
+): BrowserContextOptions {
+  const {
+    baseURL,
+    deviceScaleFactor,
+    hasTouch,
+    isMobile,
+    locale,
+    screen,
+    timezoneId,
+    userAgent,
+    viewport,
+  } = testInfo.project.use;
+
+  return {
+    ...(baseURL !== undefined ? { baseURL } : {}),
+    ...(deviceScaleFactor !== undefined ? { deviceScaleFactor } : {}),
+    ...(hasTouch !== undefined ? { hasTouch } : {}),
+    ...(isMobile !== undefined ? { isMobile } : {}),
+    ...(locale !== undefined ? { locale } : {}),
+    ...(screen !== undefined ? { screen } : {}),
+    ...(timezoneId !== undefined ? { timezoneId } : {}),
+    ...(userAgent !== undefined ? { userAgent } : {}),
+    ...(viewport !== undefined ? { viewport } : {}),
+  };
+}
+
+function newProjectBrowserContext(browser: Browser, testInfo: TestInfo) {
+  return browser.newContext(projectBrowserContextOptions(testInfo));
 }
 
 async function createNamedGroup(
@@ -426,7 +498,10 @@ test.describe("Group management", () => {
     await expect(page.getByText("4 members")).toBeVisible();
   });
 
-  test("shows owner and shared account emails in app access", async ({ page, browser }) => {
+  test("shows owner and shared account emails in app access", async ({
+    page,
+    browser,
+  }, testInfo) => {
     const owner = await signUpAndLogin(page);
     await page.goto("/groups/new");
     await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Shared Cabin");
@@ -437,7 +512,7 @@ test.describe("Group management", () => {
     await expect(page).toHaveURL(/\/groups\/[^/]+$/);
     await expect(page.getByText(owner.email)).toBeVisible();
 
-    const invitedContext = await browser.newContext();
+    const invitedContext = await newProjectBrowserContext(browser, testInfo);
     const invitedPage = await invitedContext.newPage();
     const invited = await signUpAndLogin(invitedPage);
     await invitedContext.close();
@@ -455,11 +530,11 @@ test.describe("Group management", () => {
 
   test("owner manages account links while shared members cannot see or change them", async ({
     browser,
-  }) => {
+  }, testInfo) => {
     const suffix = `${Date.now()}-${Math.round(Math.random() * 10_000)}`;
-    const ownerContext = await browser.newContext();
+    const ownerContext = await newProjectBrowserContext(browser, testInfo);
     const ownerPage = await ownerContext.newPage();
-    const memberContext = await browser.newContext();
+    const memberContext = await newProjectBrowserContext(browser, testInfo);
     const memberPage = await memberContext.newPage();
 
     try {
@@ -610,13 +685,13 @@ test.describe("Group management", () => {
 
   test("owner can remove access without changing the linked ledger and re-share it", async ({
     browser,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000);
 
     const suffix = `${Date.now()}-${Math.round(Math.random() * 10_000)}`;
-    const ownerContext = await browser.newContext();
-    const targetContext = await browser.newContext();
-    const peerContext = await browser.newContext();
+    const ownerContext = await newProjectBrowserContext(browser, testInfo);
+    const targetContext = await newProjectBrowserContext(browser, testInfo);
+    const peerContext = await newProjectBrowserContext(browser, testInfo);
     const ownerPage = await ownerContext.newPage();
     const targetPage = await targetContext.newPage();
     const peerPage = await peerContext.newPage();
@@ -636,6 +711,9 @@ test.describe("Group management", () => {
         displayName: `Revocation Peer ${suffix}`,
         email: `revocation-peer-${suffix}@example.com`,
       });
+      await expectProjectDeviceProfile(ownerPage, testInfo);
+      await expectProjectDeviceProfile(targetPage, testInfo);
+      await expectProjectDeviceProfile(peerPage, testInfo);
 
       const { groupId, groupPath } = await createNamedGroup(
         ownerPage,
@@ -791,16 +869,24 @@ test.describe("Group management", () => {
           targetAccessId,
         );
 
-      let releasePost!: () => void;
+      let resolveHeldPost!: () => void;
       const postBlocked = new Promise<void>((resolve) => {
-        releasePost = resolve;
+        resolveHeldPost = resolve;
       });
+      let heldPostReleased = false;
+      function releaseHeldPost() {
+        if (heldPostReleased) {
+          return;
+        }
+        heldPostReleased = true;
+        resolveHeldPost();
+      }
       let resolvePostObserved!: () => void;
       const postObserved = new Promise<void>((resolve) => {
         resolvePostObserved = resolve;
       });
       let postCount = 0;
-      await ownerPage.route("**/*", async (route) => {
+      const heldPostHandler = async (route: Route) => {
         const request = route.request();
         if (
           request.method() === "POST" &&
@@ -811,41 +897,51 @@ test.describe("Group management", () => {
           await postBlocked;
         }
         await route.continue();
-      });
+      };
+      await ownerPage.route("**/*", heldPostHandler);
 
       const pendingSubmit = retryForm.locator('button[type="submit"]');
       const pendingKeep = retryForm.getByRole("button", {
         name: "Keep access",
       });
-      const removePromise = pendingSubmit.click();
-      await postObserved;
-      await expect(pendingSubmit).toHaveText("Removing...");
-      await expect(pendingSubmit).toBeDisabled();
-      await expect(pendingKeep).toBeDisabled();
-      await expect(retryForm.getByRole("alert")).toHaveCount(0);
-      await pendingSubmit.evaluate((button) => {
-        (button as HTMLButtonElement).click();
-        (button as HTMLButtonElement).click();
-      });
-      await pendingKeep.evaluate((button) => {
-        (button as HTMLButtonElement).click();
-      });
-      expect(postCount).toBe(1);
-      await expect(
-        peerRow.getByRole("button", { name: "Remove access" }),
-      ).toBeEnabled();
+      let removePromise: Promise<void> | undefined;
+      try {
+        removePromise = pendingSubmit.click();
+        await postObserved;
+        await expect(pendingSubmit).toHaveText("Removing...");
+        await expect(pendingSubmit).toBeDisabled();
+        await expect(pendingKeep).toBeDisabled();
+        await expect(retryForm.getByRole("alert")).toHaveCount(0);
 
-      releasePost();
-      await removePromise;
-      await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
-      await expect(accountAccessRow(ownerPage, peer.email)).toBeVisible();
-      await expect(
-        accountAccessRow(ownerPage, peer.email).getByRole("button", {
-          name: "Remove access",
-        }),
-      ).not.toBeFocused();
-      expect(postCount).toBe(1);
-      await ownerPage.unroute("**/*");
+        // Native activation attempts on disabled controls must be no-ops while
+        // the first Server Action request is held.
+        await pendingSubmit.evaluate((button) => {
+          (button as HTMLButtonElement).click();
+          (button as HTMLButtonElement).click();
+        });
+        await pendingKeep.evaluate((button) => {
+          (button as HTMLButtonElement).click();
+        });
+        expect(postCount).toBe(1);
+        await expect(
+          peerRow.getByRole("button", { name: "Remove access" }),
+        ).toBeEnabled();
+
+        releaseHeldPost();
+        await removePromise;
+        await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
+        await expect(accountAccessRow(ownerPage, peer.email)).toBeVisible();
+        await expect(
+          accountAccessRow(ownerPage, peer.email).getByRole("button", {
+            name: "Remove access",
+          }),
+        ).not.toBeFocused();
+        expect(postCount).toBe(1);
+      } finally {
+        releaseHeldPost();
+        await removePromise?.catch(() => undefined);
+        await ownerPage.unroute("**/*", heldPostHandler);
+      }
 
       const revokedResponse = await targetPage.goto(groupPath);
       expect(revokedResponse?.status()).toBe(404);
@@ -890,13 +986,19 @@ test.describe("Group management", () => {
 
   test("owner can cancel invitation without affecting another pending invitation", async ({
     browser,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(90_000);
 
     const suffix = `${Date.now()}-${Math.round(Math.random() * 10_000)}`;
-    const ownerContext = await browser.newContext();
-    const cancelledLinkContext = await browser.newContext();
-    const unrelatedLinkContext = await browser.newContext();
+    const ownerContext = await newProjectBrowserContext(browser, testInfo);
+    const cancelledLinkContext = await newProjectBrowserContext(
+      browser,
+      testInfo,
+    );
+    const unrelatedLinkContext = await newProjectBrowserContext(
+      browser,
+      testInfo,
+    );
     const ownerPage = await ownerContext.newPage();
     const cancelledLinkPage = await cancelledLinkContext.newPage();
     const unrelatedLinkPage = await unrelatedLinkContext.newPage();
@@ -909,6 +1011,7 @@ test.describe("Group management", () => {
         displayName: `Cancellation Owner ${suffix}`,
         email: `cancellation-owner-${suffix}@example.com`,
       });
+      await expectProjectDeviceProfile(ownerPage, testInfo);
       const { groupPath } = await createNamedGroup(ownerPage, groupName, [
         "Owner",
         "Guest",
@@ -1011,6 +1114,7 @@ test.describe("Group management", () => {
       ).not.toBeFocused();
 
       await cancelledLinkPage.goto(cancelledPath);
+      await expectProjectDeviceProfile(cancelledLinkPage, testInfo);
       await expect(
         cancelledLinkPage.getByRole("heading", {
           name: "Invitation unavailable",
@@ -1027,6 +1131,7 @@ test.describe("Group management", () => {
       );
 
       await unrelatedLinkPage.goto(unrelatedPath);
+      await expectProjectDeviceProfile(unrelatedLinkPage, testInfo);
       await expect(unrelatedLinkPage).toHaveURL(/\/login\?invitation=1$/);
       await expect(
         unrelatedLinkPage.getByText(
