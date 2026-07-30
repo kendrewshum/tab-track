@@ -339,7 +339,9 @@ describe("InviteUserForm", () => {
     mocks.useActionState.mockReturnValue([{}, vi.fn(), false]);
     mocks.useEffect.mockImplementation(() => undefined);
     mocks.useId.mockReturnValue("invite-form");
-    mocks.useState.mockReturnValue([false, vi.fn()]);
+    mocks.useState
+      .mockReturnValueOnce([null, vi.fn()])
+      .mockReturnValueOnce([null, vi.fn()]);
   });
 
   afterEach(() => {
@@ -374,7 +376,8 @@ describe("InviteUserForm", () => {
   });
 
   test("copies an absolute invitation URL while displaying only its relative path", async () => {
-    const setCopied = vi.fn();
+    const setCopiedPath = vi.fn();
+    const setManualCopy = vi.fn();
     const writeText = vi.fn().mockResolvedValue(undefined);
     mocks.useActionState.mockReturnValue([
       {
@@ -384,7 +387,10 @@ describe("InviteUserForm", () => {
       vi.fn(),
       false,
     ]);
-    mocks.useState.mockReturnValue([false, setCopied]);
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce([null, setCopiedPath])
+      .mockReturnValueOnce([null, setManualCopy]);
     vi.stubGlobal("window", {
       location: { origin: "https://tab-track.example" },
     });
@@ -419,23 +425,115 @@ describe("InviteUserForm", () => {
     expect(writeText).toHaveBeenCalledWith(
       "https://tab-track.example/invite/raw-token",
     );
-    expect(setCopied).toHaveBeenCalledWith(true);
+    expect(setCopiedPath).toHaveBeenCalledWith("/invite/raw-token");
+    expect(setManualCopy).toHaveBeenCalledWith(null);
   });
 
-  test("clears copied feedback when a new invitation path arrives", () => {
-    const setCopied = vi.fn();
+  test("hides stale invitation output while a new submission is pending", () => {
     mocks.useActionState.mockReturnValue([
-      { invitationPath: "/invite/new-token" },
+      {
+        success: "Invitation created for old@example.com.",
+        invitationPath: "/invite/old-token",
+      },
       vi.fn(),
-      false,
+      true,
     ]);
-    mocks.useState.mockReturnValue([true, setCopied]);
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce(["/invite/old-token", vi.fn()])
+      .mockReturnValueOnce([
+        {
+          invitationPath: "/invite/old-token",
+          absoluteUrl: "https://tab-track.example/invite/old-token",
+        },
+        vi.fn(),
+      ]);
 
     const tree = InviteUserForm({
       groupId: "group-1",
       choices: [],
     } as Parameters<typeof InviteUserForm>[0]);
-    const copiedStatus = collectElements(tree).find(
+    const elements = collectElements(tree);
+
+    expect(
+      elements.find(
+        (element) => element.props.value === "/invite/old-token",
+      ),
+    ).toBeUndefined();
+    expect(
+      elements.find(
+        (element) =>
+          element.props.type === "button" &&
+          textContent(element.props.children) === "Copy invitation link",
+      ),
+    ).toBeUndefined();
+    expect(
+      elements.find(
+        (element) =>
+          element.props.role === "status" &&
+          textContent(element.props.children) === "Copied",
+      ),
+    ).toBeUndefined();
+  });
+
+  test("does not show copied or manual feedback from a different invitation path", () => {
+    mocks.useActionState.mockReturnValue([
+      { invitationPath: "/invite/new-token" },
+      vi.fn(),
+      false,
+    ]);
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce(["/invite/old-token", vi.fn()])
+      .mockReturnValueOnce([
+        {
+          invitationPath: "/invite/old-token",
+          absoluteUrl: "https://tab-track.example/invite/old-token",
+        },
+        vi.fn(),
+      ]);
+
+    const tree = InviteUserForm({
+      groupId: "group-1",
+      choices: [],
+    } as Parameters<typeof InviteUserForm>[0]);
+    const elements = collectElements(tree);
+
+    expect(
+      elements.find(
+        (element) =>
+          element.props.role === "status" &&
+          textContent(element.props.children) === "Copied",
+      ),
+    ).toBeUndefined();
+    expect(
+      elements.find(
+        (element) =>
+          element.props.value ===
+          "https://tab-track.example/invite/old-token",
+      ),
+    ).toBeUndefined();
+  });
+
+  test("clears copied and manual feedback on path changes and form submission", () => {
+    const setCopiedPath = vi.fn();
+    const setManualCopy = vi.fn();
+    mocks.useActionState.mockReturnValue([
+      { invitationPath: "/invite/new-token" },
+      vi.fn(),
+      false,
+    ]);
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce(["/invite/new-token", setCopiedPath])
+      .mockReturnValueOnce([null, setManualCopy]);
+
+    const tree = InviteUserForm({
+      groupId: "group-1",
+      choices: [],
+    } as Parameters<typeof InviteUserForm>[0]);
+    const elements = collectElements(tree);
+    const copiedStatus = elements.find(
       (element) =>
         element.props.role === "status" &&
         textContent(element.props.children) === "Copied",
@@ -443,10 +541,160 @@ describe("InviteUserForm", () => {
 
     expect(copiedStatus).toBeDefined();
     expect(mocks.useEffect).toHaveBeenCalledOnce();
-    const [resetCopied, dependencies] = mocks.useEffect.mock.calls[0];
+    const [resetFeedback, dependencies] = mocks.useEffect.mock.calls[0];
     expect(dependencies).toEqual(["/invite/new-token"]);
 
-    resetCopied();
-    expect(setCopied).toHaveBeenCalledWith(false);
+    resetFeedback();
+    expect(setCopiedPath).toHaveBeenCalledWith(null);
+    expect(setManualCopy).toHaveBeenCalledWith(null);
+
+    setCopiedPath.mockClear();
+    setManualCopy.mockClear();
+    const form = elements.find(
+      (element) => typeof element.props.onSubmit === "function",
+    );
+    expect(form).toBeDefined();
+
+    (form?.props.onSubmit as (() => void) | undefined)?.();
+    expect(setCopiedPath).toHaveBeenCalledWith(null);
+    expect(setManualCopy).toHaveBeenCalledWith(null);
+  });
+
+  test("shows a manual absolute link when clipboard access is unavailable", async () => {
+    const invitationPath = "/invite/unavailable-token";
+    const absoluteUrl =
+      "https://tab-track.example/invite/unavailable-token";
+    const setCopiedPath = vi.fn();
+    const setManualCopy = vi.fn();
+    mocks.useActionState.mockReturnValue([
+      { invitationPath },
+      vi.fn(),
+      false,
+    ]);
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce([null, setCopiedPath])
+      .mockReturnValueOnce([null, setManualCopy]);
+    vi.stubGlobal("window", {
+      location: { origin: "https://tab-track.example" },
+    });
+    vi.stubGlobal("navigator", {});
+
+    const firstTree = InviteUserForm({
+      groupId: "group-1",
+      choices: [],
+    } as Parameters<typeof InviteUserForm>[0]);
+    const copyButton = collectElements(firstTree).find(
+      (element) =>
+        element.props.type === "button" &&
+        textContent(element.props.children) === "Copy invitation link",
+    );
+
+    await expect(
+      (
+        copyButton?.props.onClick as (() => Promise<void>) | undefined
+      )?.(),
+    ).resolves.toBeUndefined();
+    expect(setCopiedPath).toHaveBeenCalledWith(null);
+    expect(setManualCopy).toHaveBeenCalledWith({
+      invitationPath,
+      absoluteUrl,
+    });
+
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce([null, setCopiedPath])
+      .mockReturnValueOnce([
+        { invitationPath, absoluteUrl },
+        setManualCopy,
+      ]);
+    const fallbackTree = InviteUserForm({
+      groupId: "group-1",
+      choices: [],
+    } as Parameters<typeof InviteUserForm>[0]);
+    const fallbackElements = collectElements(fallbackTree);
+
+    expect(
+      fallbackElements.find(
+        (element) =>
+          element.props.readOnly === true &&
+          element.props.value === absoluteUrl,
+      ),
+    ).toBeDefined();
+    expect(
+      fallbackElements.find(
+        (element) =>
+          element.props.role === "alert" &&
+          textContent(element.props.children).includes(
+            "Copy the full invitation link manually",
+          ),
+      ),
+    ).toBeDefined();
+  });
+
+  test("handles rejected clipboard writes with the same manual fallback", async () => {
+    const invitationPath = "/invite/rejected-token";
+    const absoluteUrl =
+      "https://tab-track.example/invite/rejected-token";
+    const setCopiedPath = vi.fn();
+    const setManualCopy = vi.fn();
+    const writeText = vi.fn().mockRejectedValue(new Error("not allowed"));
+    mocks.useActionState.mockReturnValue([
+      { invitationPath },
+      vi.fn(),
+      false,
+    ]);
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce([null, setCopiedPath])
+      .mockReturnValueOnce([null, setManualCopy]);
+    vi.stubGlobal("window", {
+      location: { origin: "https://tab-track.example" },
+    });
+    vi.stubGlobal("navigator", {
+      clipboard: { writeText },
+    });
+
+    const firstTree = InviteUserForm({
+      groupId: "group-1",
+      choices: [],
+    } as Parameters<typeof InviteUserForm>[0]);
+    const copyButton = collectElements(firstTree).find(
+      (element) =>
+        element.props.type === "button" &&
+        textContent(element.props.children) === "Copy invitation link",
+    );
+
+    await expect(
+      (
+        copyButton?.props.onClick as (() => Promise<void>) | undefined
+      )?.(),
+    ).resolves.toBeUndefined();
+    expect(writeText).toHaveBeenCalledWith(absoluteUrl);
+    expect(setCopiedPath).toHaveBeenCalledWith(null);
+    expect(setManualCopy).toHaveBeenCalledWith({
+      invitationPath,
+      absoluteUrl,
+    });
+
+    mocks.useState
+      .mockReset()
+      .mockReturnValueOnce([null, setCopiedPath])
+      .mockReturnValueOnce([
+        { invitationPath, absoluteUrl },
+        setManualCopy,
+      ]);
+    const fallbackTree = InviteUserForm({
+      groupId: "group-1",
+      choices: [],
+    } as Parameters<typeof InviteUserForm>[0]);
+
+    expect(
+      collectElements(fallbackTree).find(
+        (element) =>
+          element.props.readOnly === true &&
+          element.props.value === absoluteUrl,
+      ),
+    ).toBeDefined();
   });
 });

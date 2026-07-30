@@ -6,6 +6,11 @@ import { inviteUserToGroupAction, type InviteFormState } from "@/app/auth-action
 
 const initialState: InviteFormState = {};
 
+type ManualCopyState = {
+  invitationPath: string;
+  absoluteUrl: string;
+} | null;
+
 export function InviteUserForm({
   groupId,
   choices,
@@ -17,12 +22,19 @@ export function InviteUserForm({
     inviteUserToGroupAction.bind(null, groupId),
     initialState
   );
-  const [copied, setCopied] = React.useState(false);
+  const [copiedPath, setCopiedPath] = React.useState<string | null>(null);
+  const [manualCopy, setManualCopy] = React.useState<ManualCopyState>(null);
   const formId = React.useId();
 
   React.useEffect(() => {
-    setCopied(false);
+    setCopiedPath(null);
+    setManualCopy(null);
   }, [state.invitationPath]);
+
+  function clearCopyFeedback() {
+    setCopiedPath(null);
+    setManualCopy(null);
+  }
 
   async function copyInvitationLink() {
     if (!state.invitationPath) {
@@ -33,12 +45,33 @@ export function InviteUserForm({
       state.invitationPath,
       window.location.origin,
     ).toString();
-    await navigator.clipboard.writeText(invitationUrl);
-    setCopied(true);
+    const fallbackState = {
+      invitationPath: state.invitationPath,
+      absoluteUrl: invitationUrl,
+    };
+
+    if (!navigator.clipboard?.writeText) {
+      setCopiedPath(null);
+      setManualCopy(fallbackState);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(invitationUrl);
+      setCopiedPath(state.invitationPath);
+      setManualCopy(null);
+    } catch {
+      setCopiedPath(null);
+      setManualCopy(fallbackState);
+    }
   }
 
+  const copied = copiedPath === state.invitationPath;
+  const currentManualCopy =
+    manualCopy?.invitationPath === state.invitationPath ? manualCopy : null;
+
   return (
-    <form action={action} className="space-y-3">
+    <form action={action} onSubmit={clearCopyFeedback} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1" htmlFor={`${formId}-email`}>
           <span className="block text-sm font-medium text-slate-700">Email</span>
@@ -53,7 +86,7 @@ export function InviteUserForm({
         </label>
         <label className="space-y-1" htmlFor={`${formId}-member`}>
           <span className="block text-sm font-medium text-slate-700">
-            Ledger member <span className="font-normal text-slate-400">(optional)</span>
+            Ledger member <span className="font-normal text-slate-600">(optional)</span>
           </span>
           <select
             id={`${formId}-member`}
@@ -92,7 +125,7 @@ export function InviteUserForm({
         </p>
       ) : null}
 
-      {state.invitationPath ? (
+      {!pending && state.invitationPath ? (
         <div className="space-y-2 rounded-lg border border-green-200 bg-green-50 p-3">
           <label
             className="block text-sm font-medium text-slate-700"
@@ -119,6 +152,25 @@ export function InviteUserForm({
             <p className="text-sm font-medium text-green-700" role="status">
               Copied
             </p>
+          ) : null}
+          {currentManualCopy ? (
+            <div className="space-y-2">
+              <p className="text-sm text-amber-800" role="alert">
+                Copy the full invitation link manually.
+              </p>
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor={`${formId}-manual-invitation-link`}
+              >
+                Full invitation link
+              </label>
+              <input
+                id={`${formId}-manual-invitation-link`}
+                readOnly
+                value={currentManualCopy.absoluteUrl}
+                className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700"
+              />
+            </div>
           ) : null}
         </div>
       ) : null}
