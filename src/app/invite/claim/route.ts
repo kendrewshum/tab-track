@@ -80,7 +80,6 @@ export async function GET(request: Request) {
     });
     if (!attempt.allowed) {
       return privateRedirect(request, UNAVAILABLE_PATH, {
-        deleteInvitationCookie: true,
         retryAfterSeconds: attempt.retryAfterSeconds,
       });
     }

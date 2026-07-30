@@ -495,7 +495,7 @@ describe("GET /invite/claim", () => {
     expect(mocks.limiterSucceed).not.toHaveBeenCalled();
   });
 
-  it("blocks before the claim service, deletes the cookie, and supplies Retry-After", async () => {
+  it("blocks before the claim service, retains the cookie, and supplies Retry-After", async () => {
     mocks.limiterReserve.mockResolvedValue({
       allowed: false,
       reservation,
@@ -513,7 +513,7 @@ describe("GET /invite/claim", () => {
       "https://tabtrack.example/invite/result?status=unavailable",
     );
     expect(response.headers.get("retry-after")).toBe("417");
-    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 
   it.each([
