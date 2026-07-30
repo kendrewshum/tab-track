@@ -2,7 +2,10 @@ import type {
   AuthRateLimitAttempt,
   AuthRateLimitReservation,
 } from "@/lib/server/auth-rate-limit";
-import { validateSignupInput } from "@/lib/signup";
+import {
+  validateSignupInput,
+  validateSignupProfile,
+} from "@/lib/signup";
 
 export const SIGNUP_UNAVAILABLE_MESSAGE =
   "We could not create an account with those details. Check them or try again later.";
@@ -63,18 +66,13 @@ export async function createSignupAccountAttempt(
     return { success: false, message: SIGNUP_UNAVAILABLE_MESSAGE };
   }
 
-  const basicValidation = validateSignupInput(
-    {
-      email: input.email,
-      displayName: input.displayName,
-      password: input.password,
-      inviteCode: input.inviteCode,
-    },
-    input.expectedInviteCode,
-    { alternativeInviteAuthorized: true },
-  );
-  if (!basicValidation.success) {
-    return { success: false, message: basicValidation.message };
+  const profileValidation = validateSignupProfile({
+    email: input.email,
+    displayName: input.displayName,
+    password: input.password,
+  });
+  if (!profileValidation.success) {
+    return { success: false, message: profileValidation.message };
   }
 
   let alternativeInviteAuthorized = false;
@@ -82,7 +80,7 @@ export async function createSignupAccountAttempt(
     try {
       alternativeInviteAuthorized =
         await dependencies.authorizeAlternativeInvite(
-          basicValidation.data.email,
+          profileValidation.data.email,
         );
     } catch {
       alternativeInviteAuthorized = false;

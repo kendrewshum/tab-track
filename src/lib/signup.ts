@@ -1,7 +1,10 @@
-type SignupInput = {
+type SignupProfileInput = {
   email: string;
   displayName: string;
   password: string;
+};
+
+type SignupInput = SignupProfileInput & {
   inviteCode: string;
 };
 
@@ -19,17 +22,16 @@ type SignupFailure = {
   message: string;
 };
 
-export function validateSignupInput(
-  input: SignupInput,
-  expectedInviteCode: string | undefined,
-  options: { alternativeInviteAuthorized?: boolean } = {},
+const SIGNUP_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function validateSignupProfile(
+  input: SignupProfileInput,
 ): SignupSuccess | SignupFailure {
   const email = input.email.trim().toLowerCase();
   const displayName = input.displayName.trim();
   const password = input.password;
-  const inviteCode = input.inviteCode.trim();
 
-  if (!email || !email.includes("@")) {
+  if (!SIGNUP_EMAIL_PATTERN.test(email)) {
     return { success: false, message: "Enter a valid email address." };
   }
 
@@ -41,13 +43,6 @@ export function validateSignupInput(
     return { success: false, message: "Password must be at least 8 characters." };
   }
 
-  if (
-    !options.alternativeInviteAuthorized &&
-    (!expectedInviteCode || inviteCode !== expectedInviteCode)
-  ) {
-    return { success: false, message: "That invite code is not valid." };
-  }
-
   return {
     success: true,
     data: {
@@ -56,4 +51,25 @@ export function validateSignupInput(
       password,
     },
   };
+}
+
+export function validateSignupInput(
+  input: SignupInput,
+  expectedInviteCode: string | undefined,
+  options: { alternativeInviteAuthorized?: boolean } = {},
+): SignupSuccess | SignupFailure {
+  const profile = validateSignupProfile(input);
+  if (!profile.success) {
+    return profile;
+  }
+
+  const inviteCode = input.inviteCode.trim();
+  if (
+    !options.alternativeInviteAuthorized &&
+    (!expectedInviteCode || inviteCode !== expectedInviteCode)
+  ) {
+    return { success: false, message: "That invite code is not valid." };
+  }
+
+  return profile;
 }

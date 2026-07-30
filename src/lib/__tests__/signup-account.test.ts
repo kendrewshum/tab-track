@@ -199,16 +199,48 @@ describe("signup account throttling", () => {
     expect(dependencies.authorizeAlternativeInvite).not.toHaveBeenCalled();
   });
 
-  it("does not query invitation authorization for a malformed email", async () => {
+  it.each([
+    "not-an-email",
+    "friend@",
+    "@example.com",
+    "a@@b",
+    "friend @example.com",
+    "friend@ example.com",
+  ])(
+    "does not query invitation authorization for malformed email %j",
+    async (email) => {
+      const dependencies = createDependencies({
+        authorizeAlternativeInvite: async () => true,
+      });
+
+      await expect(
+        createSignupAccountAttempt(
+          {
+            ...input,
+            email,
+            inviteCode: "",
+            expectedInviteCode: undefined,
+          },
+          dependencies,
+        ),
+      ).resolves.toEqual({
+        success: false,
+        message: "Enter a valid email address.",
+      });
+
+      expect(dependencies.authorizeAlternativeInvite).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not bypass the invite gate when alternative authorization returns false", async () => {
     const dependencies = createDependencies({
-      authorizeAlternativeInvite: async () => true,
+      authorizeAlternativeInvite: async () => false,
     });
 
     await expect(
       createSignupAccountAttempt(
         {
           ...input,
-          email: "not-an-email",
           inviteCode: "",
           expectedInviteCode: undefined,
         },
@@ -216,10 +248,14 @@ describe("signup account throttling", () => {
       ),
     ).resolves.toEqual({
       success: false,
-      message: "Enter a valid email address.",
+      message: "That invite code is not valid.",
     });
 
-    expect(dependencies.authorizeAlternativeInvite).not.toHaveBeenCalled();
+    expect(dependencies.authorizeAlternativeInvite).toHaveBeenCalledWith(
+      "friend@example.com",
+    );
+    expect(dependencies.findUserByEmail).not.toHaveBeenCalled();
+    expect(dependencies.limiter.succeed).not.toHaveBeenCalled();
   });
 
   it("treats invitation authorization failures as unauthorized and keeps the reservation", async () => {
