@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import { type AuthFormState, signupAction } from "@/app/auth-actions";
 
@@ -13,6 +13,8 @@ export function SignupForm({
   hasGroupInvitation: boolean;
 }) {
   const [state, action, pending] = useActionState(signupAction, initialState);
+  const [useAppInviteCode, setUseAppInviteCode] = useState(false);
+  const showInviteCode = !hasGroupInvitation || useAppInviteCode;
 
   return (
     <form action={action} className="space-y-5">
@@ -21,14 +23,23 @@ export function SignupForm({
           className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
           role="status"
         >
-          Create an account to accept your group invitation.
+          {useAppInviteCode
+            ? "Use your app invite code to create your account. Your group invitation will remain available."
+            : "Create an account to accept your group invitation."}
         </p>
       ) : null}
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Name</label>
+        <label
+          className="block text-sm font-medium text-slate-700 mb-1.5"
+          htmlFor="signup-display-name"
+        >
+          Name
+        </label>
         <input
+          id="signup-display-name"
           name="displayName"
+          autoComplete="name"
           required
           placeholder="Your name"
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -36,10 +47,17 @@ export function SignupForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+        <label
+          className="block text-sm font-medium text-slate-700 mb-1.5"
+          htmlFor="signup-email"
+        >
+          Email
+        </label>
         <input
+          id="signup-email"
           name="email"
           type="email"
+          autoComplete="email"
           required
           placeholder="you@example.com"
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -47,23 +65,49 @@ export function SignupForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+        <label
+          className="block text-sm font-medium text-slate-700 mb-1.5"
+          htmlFor="signup-password"
+        >
+          Password
+        </label>
         <input
+          id="signup-password"
           name="password"
           type="password"
+          autoComplete="new-password"
           required
           placeholder="At least 8 characters"
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
         />
       </div>
 
-      {!hasGroupInvitation ? (
+      {hasGroupInvitation ? (
+        <button
+          type="button"
+          aria-controls="signup-invite-code"
+          aria-expanded={useAppInviteCode}
+          onClick={() => setUseAppInviteCode(!useAppInviteCode)}
+          className="text-sm font-medium text-green-700 hover:text-green-800"
+        >
+          {useAppInviteCode
+            ? "Use group invitation instead"
+            : "Use app invite code instead"}
+        </button>
+      ) : null}
+
+      {showInviteCode ? (
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <label
+            className="block text-sm font-medium text-slate-700 mb-1.5"
+            htmlFor="signup-invite-code"
+          >
             Invite Code
           </label>
           <input
+            id="signup-invite-code"
             name="inviteCode"
+            autoComplete="off"
             required
             placeholder="Enter invite code"
             className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"

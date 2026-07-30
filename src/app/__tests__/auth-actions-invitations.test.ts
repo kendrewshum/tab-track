@@ -580,6 +580,24 @@ describe("invitation-aware authentication actions", () => {
     );
   });
 
+  test("accepts the app invite code when a stale group invitation is unauthorized", async () => {
+    cookieStore = requestCookieStore(rawToken);
+    mocks.cookies.mockResolvedValue(cookieStore);
+    mocks.isInvitationAuthorizedForSignup.mockResolvedValue(false);
+
+    await expect(
+      signupAction({}, signupForm("app-invite")),
+    ).resolves.toEqual({});
+
+    expect(mocks.isInvitationAuthorizedForSignup).toHaveBeenCalledTimes(1);
+    expect(mocks.createUser).toHaveBeenCalledTimes(1);
+    expect(mocks.signIn).toHaveBeenCalledWith(
+      "credentials",
+      expect.objectContaining({ redirectTo: "/invite/claim" }),
+    );
+    expect(cookieStore.delete).not.toHaveBeenCalled();
+  });
+
   test("keeps signup unavailable when neither invitation path is configured", async () => {
     vi.stubEnv("APP_INVITE_CODE", "");
 
@@ -612,7 +630,9 @@ describe("invitation-aware authentication pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentUser.mockResolvedValue(null);
+    mocks.cookies.mockResolvedValue(requestCookieStore());
     mocks.useActionState.mockReturnValue([{}, vi.fn(), false]);
+    mocks.useState.mockReturnValue([false, vi.fn()]);
     vi.stubGlobal("React", React);
   });
 
@@ -688,6 +708,90 @@ describe("invitation-aware authentication pages", () => {
     ).toBe(false);
   });
 
+  test("reveals an accessible app invite-code fallback without exposing the token", () => {
+    const setUseAppInviteCode = vi.fn();
+    mocks.useState.mockReturnValue([false, setUseAppInviteCode]);
+
+    const initialForm = SignupForm({
+      hasGroupInvitation: true,
+    } as Parameters<typeof SignupForm>[0]);
+    const toggle = collectElements(initialForm).find(
+      (element) =>
+        element.props.type === "button" &&
+        textContent(element.props.children) === "Use app invite code instead",
+    );
+
+    expect(toggle?.props).toEqual(
+      expect.objectContaining({
+        "aria-controls": "signup-invite-code",
+        "aria-expanded": false,
+      }),
+    );
+    expect(
+      collectElements(initialForm).some(
+        (element) => element.props.name === "inviteCode",
+      ),
+    ).toBe(false);
+
+    (toggle?.props.onClick as (() => void) | undefined)?.();
+    expect(setUseAppInviteCode).toHaveBeenCalledWith(true);
+
+    mocks.useState.mockReturnValue([true, setUseAppInviteCode]);
+    const revealedForm = SignupForm({
+      hasGroupInvitation: true,
+    } as Parameters<typeof SignupForm>[0]);
+    const inviteCode = collectElements(revealedForm).find(
+      (element) => element.props.name === "inviteCode",
+    );
+    const status = collectElements(revealedForm).find(
+      (element) => element.props.role === "status",
+    );
+
+    expect(inviteCode?.props).toEqual(
+      expect.objectContaining({
+        id: "signup-invite-code",
+        required: true,
+      }),
+    );
+    expect(textContent(status)).toContain(
+      "Use your app invite code to create your account.",
+    );
+    expect(textContent(revealedForm)).not.toContain(rawToken);
+  });
+
+  test("associates auth labels with stable autocomplete-enabled inputs", () => {
+    const forms = [
+      {
+        tree: LoginForm({ hasGroupInvitation: false }),
+        fields: [
+          ["email", "login-email", "email"],
+          ["password", "login-password", "current-password"],
+        ],
+      },
+      {
+        tree: SignupForm({ hasGroupInvitation: false }),
+        fields: [
+          ["displayName", "signup-display-name", "name"],
+          ["email", "signup-email", "email"],
+          ["password", "signup-password", "new-password"],
+          ["inviteCode", "signup-invite-code", "off"],
+        ],
+      },
+    ] as const;
+
+    for (const { tree, fields } of forms) {
+      const elements = collectElements(tree);
+      for (const [name, id, autoComplete] of fields) {
+        expect(
+          elements.find((element) => element.props.name === name)?.props,
+        ).toEqual(expect.objectContaining({ id, autoComplete }));
+        expect(
+          elements.find((element) => element.props.htmlFor === id),
+        ).toBeDefined();
+      }
+    }
+  });
+
   test("does not instruct invited signup users to enter a hidden code", async () => {
     mocks.cookies.mockResolvedValue(requestCookieStore(rawToken));
 
@@ -702,10 +806,26 @@ describe("invitation-aware authentication pages", () => {
   test.each([
     ["login", LoginPage],
     ["signup", SignupPage],
-  ])("keeps the authenticated %s redirect ahead of cookie handling", async (
+  ])("redirects authenticated invited users from %s to claim", async (
     _label,
     Page,
   ) => {
+    const redirectError = new Error("NEXT_REDIRECT");
+    mocks.getCurrentUser.mockResolvedValue({ id: "user-1" });
+    mocks.cookies.mockResolvedValue(requestCookieStore(rawToken));
+    mocks.redirect.mockImplementation(() => {
+      throw redirectError;
+    });
+
+    await expect(Page()).rejects.toBe(redirectError);
+
+    expect(mocks.redirect).toHaveBeenCalledWith("/invite/claim");
+  });
+
+  test.each([
+    ["login", LoginPage],
+    ["signup", SignupPage],
+  ])("keeps the authenticated ordinary %s redirect", async (_label, Page) => {
     const redirectError = new Error("NEXT_REDIRECT");
     mocks.getCurrentUser.mockResolvedValue({ id: "user-1" });
     mocks.redirect.mockImplementation(() => {
@@ -715,7 +835,6 @@ describe("invitation-aware authentication pages", () => {
     await expect(Page()).rejects.toBe(redirectError);
 
     expect(mocks.redirect).toHaveBeenCalledWith("/");
-    expect(mocks.cookies).not.toHaveBeenCalled();
   });
 });
 

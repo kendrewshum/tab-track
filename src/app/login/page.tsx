@@ -9,13 +9,12 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
-  if (user) {
-    redirect("/");
-  }
-
   const hasGroupInvitation = Boolean(
     (await cookies()).get(GROUP_INVITATION_COOKIE_NAME)?.value,
   );
+  if (user) {
+    redirect(hasGroupInvitation ? "/invite/claim" : "/");
+  }
 
   return (
     <div className="max-w-md mx-auto pt-8">
