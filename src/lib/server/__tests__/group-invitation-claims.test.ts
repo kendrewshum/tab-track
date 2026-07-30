@@ -548,47 +548,50 @@ describe("group invitation claims", () => {
     );
   });
 
-  it("allows exactly one concurrent claimant to consume a token", async () => {
-    const [db, concurrentDb] = await createTestDatabases(2);
-    if (!db || !concurrentDb) throw new Error("missing concurrent database");
-    await seedDatabase(db);
-    await insertInvitation(db);
-    const input = {
-      rawToken: "active-token",
-      secret,
-      user: { id: "claimant", email: "friend@example.com" },
-      now,
-    };
+  it.each([1, 2, 3])(
+    "allows exactly one concurrent claimant to consume a token (run %s)",
+    async () => {
+      const [db, concurrentDb] = await createTestDatabases(2);
+      if (!db || !concurrentDb) throw new Error("missing concurrent database");
+      await seedDatabase(db);
+      await insertInvitation(db);
+      const input = {
+        rawToken: "active-token",
+        secret,
+        user: { id: "claimant", email: "friend@example.com" },
+        now,
+      };
 
-    const results = await Promise.all([
-      claimGroupInvitation(createGroupInvitationClaimStore(db), input),
-      claimGroupInvitation(
-        createGroupInvitationClaimStore(concurrentDb),
-        input,
-      ),
-    ]);
+      const results = await Promise.all([
+        claimGroupInvitation(createGroupInvitationClaimStore(db), input),
+        claimGroupInvitation(
+          createGroupInvitationClaimStore(concurrentDb),
+          input,
+        ),
+      ]);
 
-    expect(results).toEqual(
-      expect.arrayContaining([
-        { kind: "claimed", groupId: "group-a" },
-        { kind: "unavailable" },
-      ]),
-    );
-    expect(
-      results.filter((result) => result.kind === "claimed"),
-    ).toHaveLength(1);
-    await expect(accessRows(db)).resolves.toHaveLength(1);
-    await expect(
-      db
-        .select({
-          claimedAt: groupInvitations.claimedAt,
-          claimedByUserId: groupInvitations.claimedByUserId,
-        })
-        .from(groupInvitations),
-    ).resolves.toEqual([
-      { claimedAt: now, claimedByUserId: "claimant" },
-    ]);
-  });
+      expect(results).toEqual(
+        expect.arrayContaining([
+          { kind: "claimed", groupId: "group-a" },
+          { kind: "unavailable" },
+        ]),
+      );
+      expect(
+        results.filter((result) => result.kind === "claimed"),
+      ).toHaveLength(1);
+      await expect(accessRows(db)).resolves.toHaveLength(1);
+      await expect(
+        db
+          .select({
+            claimedAt: groupInvitations.claimedAt,
+            claimedByUserId: groupInvitations.claimedByUserId,
+          })
+          .from(groupInvitations),
+      ).resolves.toEqual([
+        { claimedAt: now, claimedByUserId: "claimant" },
+      ]);
+    },
+  );
 
   it.each(["grantAccess", "linkMember"] as const)(
     "rolls back the claim and access after an unexpected %s failure",
