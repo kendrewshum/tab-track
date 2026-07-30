@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   revokeGroupAccessAction: vi.fn(),
   useActionState: vi.fn(),
   useEffect: vi.fn(),
+  useId: vi.fn(),
+  useRef: vi.fn(),
   useState: vi.fn(),
 }));
 
@@ -14,6 +16,8 @@ vi.mock("react", async (importOriginal) => {
     ...original,
     useActionState: mocks.useActionState,
     useEffect: mocks.useEffect,
+    useId: mocks.useId,
+    useRef: mocks.useRef,
     useState: mocks.useState,
   };
 });
@@ -24,6 +28,8 @@ vi.mock("@/app/auth-actions", () => ({
 }));
 
 import { AccessManagementAction } from "@/app/groups/[id]/access-management-action";
+
+type ActionState = { error?: string; success?: string };
 
 type ElementLike = {
   type?: unknown;
@@ -73,16 +79,44 @@ function renderAction({
   state = {},
   pending = false,
   confirming = false,
+  awaitingResult = false,
+  submittedState,
+  restoreTriggerFocus = false,
+  wasConfirming = false,
 }: {
   kind: "revoke" | "cancel";
-  state?: { error?: string; success?: string };
+  state?: ActionState;
   pending?: boolean;
   confirming?: boolean;
+  awaitingResult?: boolean;
+  submittedState?: ActionState;
+  restoreTriggerFocus?: boolean;
+  wasConfirming?: boolean;
 }) {
   const setConfirming = vi.fn();
+  const setAwaitingResult = vi.fn();
   const action = vi.fn();
+  const triggerFocus = vi.fn();
+  const confirmFocus = vi.fn();
+  const triggerRef = { current: { focus: triggerFocus } };
+  const confirmRef = { current: { focus: confirmFocus } };
+  const submittedStateRef = { current: submittedState ?? state };
+  const restoreTriggerFocusRef = { current: restoreTriggerFocus };
+  const wasConfirmingRef = { current: wasConfirming };
+
   mocks.useActionState.mockReturnValue([state, action, pending]);
-  mocks.useState.mockReturnValue([confirming, setConfirming]);
+  mocks.useState
+    .mockReset()
+    .mockReturnValueOnce([confirming, setConfirming])
+    .mockReturnValueOnce([awaitingResult, setAwaitingResult]);
+  mocks.useRef
+    .mockReset()
+    .mockReturnValueOnce(triggerRef)
+    .mockReturnValueOnce(confirmRef)
+    .mockReturnValueOnce(submittedStateRef)
+    .mockReturnValueOnce(restoreTriggerFocusRef)
+    .mockReturnValueOnce(wasConfirmingRef);
+  mocks.useId.mockReturnValue("access-management-guidance");
 
   const targetId = kind === "revoke" ? "access-1" : "invitation-1";
   const tree = AccessManagementAction({
@@ -94,10 +128,23 @@ function renderAction({
 
   return {
     action,
+    confirmFocus,
     elements: collectElements(tree),
+    restoreTriggerFocusRef,
+    setAwaitingResult,
     setConfirming,
     targetId,
+    triggerFocus,
   };
+}
+
+function findEffectByDependencies(
+  predicate: (dependencies: unknown[]) => boolean,
+) {
+  return mocks.useEffect.mock.calls.find(
+    ([, dependencies]) =>
+      Array.isArray(dependencies) && predicate(dependencies),
+  )?.[0] as (() => void) | undefined;
 }
 
 describe("AccessManagementAction", () => {
@@ -106,16 +153,18 @@ describe("AccessManagementAction", () => {
   });
 
   test("binds revoke submissions and opens the remove confirmation", async () => {
-    const { elements, setConfirming } = renderAction({ kind: "revoke" });
+    const { elements, setAwaitingResult, setConfirming } = renderAction({
+      kind: "revoke",
+    });
     const removeButton = elements.find(
       (element) =>
         element.props.type === "button" &&
         textContent(element.props.children) === "Remove access",
     );
 
-    expect(removeButton?.props.type).toBe("button");
     expect(removeButton?.props.disabled).toBe(false);
     (removeButton?.props.onClick as (() => void) | undefined)?.();
+    expect(setAwaitingResult).toHaveBeenCalledWith(false);
     expect(setConfirming).toHaveBeenCalledWith(true);
 
     const boundAction = mocks.useActionState.mock.calls[0][0];
@@ -129,19 +178,28 @@ describe("AccessManagementAction", () => {
     expect(mocks.cancelGroupInvitationAction).not.toHaveBeenCalled();
   });
 
-  test("renders the remove confirmation guidance and accessId payload", () => {
+  test("renders accessible remove confirmation markup and accessId payload", () => {
     const { elements, targetId } = renderAction({
       kind: "revoke",
       confirming: true,
     });
 
-    expect(
-      elements.some(
-        (element) =>
-          textContent(element.props.children) ===
+    const guidance = elements.find(
+      (element) =>
+        element.props.id === "access-management-guidance" &&
+        textContent(element.props.children) ===
           "Remove app access for friend@example.com? Their ledger member and history will remain.",
-      ),
-    ).toBe(true);
+    );
+    const confirmButton = elements.find(
+      (element) =>
+        element.props.type === "submit" &&
+        textContent(element.props.children) === "Confirm remove",
+    );
+
+    expect(guidance).toBeDefined();
+    expect(confirmButton?.props["aria-describedby"]).toBe(
+      "access-management-guidance",
+    );
     expect(
       elements.find(
         (element) =>
@@ -152,11 +210,6 @@ describe("AccessManagementAction", () => {
     expect(
       elements.some((element) => element.props.name === "invitationId"),
     ).toBe(false);
-    expect(
-      elements.some(
-        (element) => textContent(element.props.children) === "Confirm remove",
-      ),
-    ).toBe(true);
     expect(
       elements.some(
         (element) => textContent(element.props.children) === "Keep access",
@@ -209,41 +262,111 @@ describe("AccessManagementAction", () => {
     expect(mocks.revokeGroupAccessAction).not.toHaveBeenCalled();
   });
 
-  test("keeps confirmation open after an accessible error", () => {
-    const { elements, setConfirming } = renderAction({
+  test("renders an error only for a completed current submission", () => {
+    const state = { error: "We could not remove that access." };
+    const staleRender = renderAction({
       kind: "revoke",
       confirming: true,
-      state: { error: "We could not remove that access." },
+      state,
+      awaitingResult: false,
     });
-
-    const alert = elements.find((element) => element.props.role === "alert");
-    expect(textContent(alert?.props.children)).toBe(
-      "We could not remove that access.",
-    );
     expect(
-      elements.some(
+      staleRender.elements.find((element) => element.props.role === "alert"),
+    ).toBeUndefined();
+
+    const currentRender = renderAction({
+      kind: "revoke",
+      confirming: true,
+      state,
+      awaitingResult: true,
+      submittedState: {},
+    });
+    const alert = currentRender.elements.find(
+      (element) => element.props.role === "alert",
+    );
+    expect(textContent(alert?.props.children)).toBe(state.error);
+    expect(
+      currentRender.elements.some(
         (element) => textContent(element.props.children) === "Confirm remove",
       ),
     ).toBe(true);
-
-    const closeAfterSuccess = mocks.useEffect.mock.calls[0][0];
-    closeAfterSuccess();
-    expect(setConfirming).not.toHaveBeenCalled();
   });
 
-  test("announces success and closes confirmation once it succeeds", () => {
-    const { elements, setConfirming } = renderAction({
+  test("uses contrast-compliant accessible success feedback for the current submission", () => {
+    const { elements } = renderAction({
       kind: "cancel",
       confirming: true,
       state: { success: "Invitation cancelled." },
+      awaitingResult: true,
+      submittedState: {},
     });
 
     const status = elements.find((element) => element.props.role === "status");
     expect(textContent(status?.props.children)).toBe("Invitation cancelled.");
+    expect(status?.props.className).toContain("text-green-700");
+  });
 
-    const [closeAfterSuccess, dependencies] = mocks.useEffect.mock.calls[0];
-    expect(dependencies).toEqual(["Invitation cancelled."]);
-    closeAfterSuccess();
-    expect(setConfirming).toHaveBeenCalledWith(false);
+  test("requests confirmation focus only after opening", () => {
+    const collapsed = renderAction({ kind: "revoke" });
+    findEffectByDependencies(
+      (dependencies) =>
+        dependencies.length === 1 && dependencies[0] === false,
+    )?.();
+    expect(collapsed.confirmFocus).not.toHaveBeenCalled();
+    expect(collapsed.triggerFocus).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    const open = renderAction({ kind: "revoke", confirming: true });
+    findEffectByDependencies(
+      (dependencies) =>
+        dependencies.length === 1 && dependencies[0] === true,
+    )?.();
+    expect(open.confirmFocus).toHaveBeenCalledOnce();
+    expect(open.triggerFocus).not.toHaveBeenCalled();
+  });
+
+  test("marks Keep for trigger restoration but not a successful submission", () => {
+    const manualClose = renderAction({
+      kind: "cancel",
+      confirming: true,
+    });
+    const keepButton = manualClose.elements.find(
+      (element) =>
+        element.props.type === "button" &&
+        textContent(element.props.children) === "Keep invitation",
+    );
+    (keepButton?.props.onClick as (() => void) | undefined)?.();
+    expect(manualClose.restoreTriggerFocusRef.current).toBe(true);
+    expect(manualClose.setAwaitingResult).toHaveBeenCalledWith(false);
+    expect(manualClose.setConfirming).toHaveBeenCalledWith(false);
+
+    vi.clearAllMocks();
+    const successClose = renderAction({
+      kind: "cancel",
+      confirming: true,
+      state: { success: "Invitation cancelled." },
+      awaitingResult: true,
+      submittedState: {},
+      restoreTriggerFocus: true,
+    });
+    findEffectByDependencies(
+      (dependencies) => dependencies.length === 3,
+    )?.();
+    expect(successClose.restoreTriggerFocusRef.current).toBe(false);
+    expect(successClose.setConfirming).toHaveBeenCalledWith(false);
+  });
+
+  test("requests trigger focus after a manual confirmation close", () => {
+    const closed = renderAction({
+      kind: "revoke",
+      restoreTriggerFocus: true,
+      wasConfirming: true,
+    });
+    findEffectByDependencies(
+      (dependencies) =>
+        dependencies.length === 1 && dependencies[0] === false,
+    )?.();
+    expect(closed.triggerFocus).toHaveBeenCalledOnce();
+    expect(closed.confirmFocus).not.toHaveBeenCalled();
   });
 });
