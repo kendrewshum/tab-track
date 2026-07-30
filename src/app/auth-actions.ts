@@ -49,6 +49,7 @@ export type MemberAccountLinkFormState = {
 
 const LOGIN_UNAVAILABLE_MESSAGE =
   "That email and password do not match, or too many attempts were made. Try again later.";
+const INVITATION_CLAIM_CONTINUE_PATH = "/invite/continue";
 
 export async function loginAction(
   _previousState: AuthFormState,
@@ -73,7 +74,9 @@ export async function loginAction(
     await signIn("credentials", {
       email,
       password,
-      redirectTo: hasGroupInvitation ? "/invite/claim" : "/",
+      redirectTo: hasGroupInvitation
+        ? INVITATION_CLAIM_CONTINUE_PATH
+        : "/",
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -150,7 +153,9 @@ export async function signupAction(
     await signIn("credentials", {
       email: result.data.email,
       password: result.data.password,
-      redirectTo: invitationToken ? "/invite/claim" : "/",
+      redirectTo: invitationToken
+        ? INVITATION_CLAIM_CONTINUE_PATH
+        : "/",
     });
   } catch (error) {
     if (error instanceof AuthError) {

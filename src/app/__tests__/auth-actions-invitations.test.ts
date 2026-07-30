@@ -447,7 +447,7 @@ describe("invitation-aware authentication actions", () => {
     vi.mocked(Date.now).mockRestore();
   });
 
-  test("redirects a successful invited login to the claim route without forwarding the token", async () => {
+  test("redirects a successful invited login through a browser-loadable claim continuation without forwarding the token", async () => {
     cookieStore = requestCookieStore(rawToken);
     mocks.cookies.mockResolvedValue(cookieStore);
     const formData = credentialsForm();
@@ -460,7 +460,7 @@ describe("invitation-aware authentication actions", () => {
     expect(mocks.signIn).toHaveBeenCalledWith("credentials", {
       email: "friend@example.com",
       password: "password123",
-      redirectTo: "/invite/claim",
+      redirectTo: "/invite/continue",
     });
     expect(JSON.stringify(mocks.signIn.mock.calls)).not.toContain(rawToken);
     expect([...formData.values()]).not.toContain(rawToken);
@@ -534,7 +534,7 @@ describe("invitation-aware authentication actions", () => {
     expect(mocks.signIn).toHaveBeenCalledWith("credentials", {
       email: "friend@example.com",
       password: "password123",
-      redirectTo: "/invite/claim",
+      redirectTo: "/invite/continue",
     });
     expect(cookieStore.delete).not.toHaveBeenCalled();
     expect(JSON.stringify(mocks.signIn.mock.calls)).not.toContain(rawToken);
