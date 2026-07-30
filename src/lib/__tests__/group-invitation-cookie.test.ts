@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GROUP_INVITATION_COOKIE_NAME,
+  GROUP_INVITATION_COOKIE_TTL_SECONDS,
   getGroupInvitationCookieOptions,
 } from "@/lib/server/group-invitation-cookie";
 
@@ -14,6 +15,10 @@ describe("group invitation cookie", () => {
     expect(GROUP_INVITATION_COOKIE_NAME).toBe(
       "tab-track-group-invitation",
     );
+  });
+
+  it("caps invitation cookies at thirty minutes", () => {
+    expect(GROUP_INVITATION_COOKIE_TTL_SECONDS).toBe(30 * 60);
   });
 
   it("returns exact non-production options with the caller lifespan", () => {

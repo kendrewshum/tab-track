@@ -53,21 +53,20 @@ function privateRedirect(
 
 export async function GET(request: Request) {
   try {
-    const user = await getCurrentUser();
     const cookieStore = await cookies();
     const rawToken = cookieStore.get(
       GROUP_INVITATION_COOKIE_NAME,
     )?.value;
-
-    if (!user) {
-      return privateRedirect(request, "/login?invitation=1");
-    }
-
     const secret = process.env.AUTH_SECRET;
     if (!rawToken || !secret?.trim()) {
       return privateRedirect(request, UNAVAILABLE_PATH, {
         deleteInvitationCookie: Boolean(rawToken),
       });
+    }
+
+    const user = await getCurrentUser();
+    if (!user) {
+      return privateRedirect(request, "/login?invitation=1");
     }
 
     const limiter = createAuthRateLimiter({
@@ -97,7 +96,12 @@ export async function GET(request: Request) {
     );
 
     if (result.kind === "claimed") {
-      await limiter.succeed(attempt.reservation);
+      try {
+        await limiter.succeed(attempt.reservation);
+      } catch {
+        // The invitation claim is already durable. Rate-limit cleanup is
+        // best-effort and must not replace the successful claim response.
+      }
       return privateRedirect(
         request,
         `/groups/${encodeURIComponent(result.groupId)}`,

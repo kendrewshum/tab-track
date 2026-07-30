@@ -298,8 +298,9 @@ describe("GET /invite/claim", () => {
     expect(mocks.claimGroupInvitation).not.toHaveBeenCalled();
   });
 
-  it("deletes a present cookie when configuration is missing", async () => {
+  it("deletes a present cookie before reading the session when configuration is missing", async () => {
     vi.stubEnv("AUTH_SECRET", "");
+    mocks.getCurrentUser.mockResolvedValue(null);
 
     const response = await claimInvitation(
       new Request("https://tabtrack.example/invite/claim"),
@@ -313,6 +314,7 @@ describe("GET /invite/claim", () => {
       "tab-track-group-invitation=;",
     );
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
     expect(mocks.limiterReserve).not.toHaveBeenCalled();
   });
 
@@ -330,6 +332,7 @@ describe("GET /invite/claim", () => {
       "https://tabtrack.example/invite/result?status=unavailable",
     );
     expect(response.headers.get("set-cookie")).toBeNull();
+    expect(mocks.getCurrentUser).not.toHaveBeenCalled();
     expect(mocks.limiterReserve).not.toHaveBeenCalled();
   });
 
@@ -374,6 +377,36 @@ describe("GET /invite/claim", () => {
       "https://tabtrack.example/groups/group%2F..%2Fprivate%3Fx%3D1",
     );
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("preserves a durable claim when limiter cleanup fails", async () => {
+    mocks.claimGroupInvitation.mockResolvedValue({
+      kind: "claimed",
+      groupId: "group/../private?x=1",
+    });
+    mocks.limiterSucceed.mockRejectedValue(
+      new Error(`cleanup exposed ${rawToken} server-secret`),
+    );
+
+    const response = await claimInvitation(
+      new Request("https://tabtrack.example/invite/claim"),
+    );
+
+    expect(mocks.claimGroupInvitation).toHaveBeenCalledTimes(1);
+    expect(mocks.limiterSucceed).toHaveBeenCalledTimes(1);
+    expect(mocks.limiterSucceed).toHaveBeenCalledWith(reservation);
+    expectPrivateRedirect(
+      response,
+      "https://tabtrack.example/groups/group%2F..%2Fprivate%3Fx%3D1",
+    );
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(serializedResponse(response)).not.toContain(rawToken);
+    expect(serializedResponse(response)).not.toContain("server-secret");
+    expect(serializedResponse(response)).not.toContain("cleanup exposed");
+    const body = await response.text();
+    expect(body).not.toContain(rawToken);
+    expect(body).not.toContain("server-secret");
+    expect(body).not.toContain("cleanup exposed");
   });
 
   it("retains the cookie and reservation after an account mismatch", async () => {

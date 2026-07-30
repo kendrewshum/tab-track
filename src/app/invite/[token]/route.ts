@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
   GROUP_INVITATION_COOKIE_NAME,
+  GROUP_INVITATION_COOKIE_TTL_SECONDS,
   getGroupInvitationCookieOptions,
 } from "@/lib/server/group-invitation-cookie";
 import {
@@ -49,7 +50,10 @@ export async function GET(
       return privateRedirect(request, UNAVAILABLE_PATH);
     }
 
-    const maxAge = Math.min(30 * 60, remainingSeconds);
+    const maxAge = Math.min(
+      GROUP_INVITATION_COOKIE_TTL_SECONDS,
+      remainingSeconds,
+    );
     const response = privateRedirect(request, "/invite/claim");
     response.cookies.set(
       GROUP_INVITATION_COOKIE_NAME,
