@@ -101,6 +101,19 @@ export async function claimGroupInvitation(
   },
 ): Promise<InvitationClaimResult> {
   const tokenHash = hashGroupInvitationToken(input.rawToken, input.secret);
+  const preflightInvitation = await store.findActiveInvitation(
+    tokenHash,
+    input.now,
+  );
+  if (preflightInvitation === null) {
+    return { kind: "unavailable" };
+  }
+  if (
+    normalizeEmail(preflightInvitation.email) !==
+    normalizeEmail(input.user.email)
+  ) {
+    return { kind: "account-mismatch" };
+  }
 
   const runClaimTransaction = () =>
     store.transaction(async (tx): Promise<InvitationClaimResult> => {

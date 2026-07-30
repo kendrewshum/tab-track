@@ -174,15 +174,19 @@ function databaseBusyError(): Error & { code: "SQLITE_BUSY" } {
   });
 }
 
+function activeInvitation(email = "friend@example.com") {
+  return {
+    id: "invitation-active",
+    groupId: "group-a",
+    email,
+    memberId: null,
+    expiresAt: now + 100,
+  };
+}
+
 function successfulClaimTransaction(): GroupInvitationClaimTransaction {
   return {
-    findActiveInvitation: async () => ({
-      id: "invitation-active",
-      groupId: "group-a",
-      email: "friend@example.com",
-      memberId: null,
-      expiresAt: now + 100,
-    }),
+    findActiveInvitation: async () => activeInvitation(),
     markClaimed: async () => true,
     grantAccess: async () => undefined,
     linkMember: async () => false,
@@ -639,10 +643,92 @@ describe("group invitation claims", () => {
     },
   );
 
+  it("returns unavailable for an inactive token without opening a write transaction", async () => {
+    let transactionCalls = 0;
+    const transaction = successfulClaimTransaction();
+    const store: GroupInvitationClaimStore = {
+      findActiveInvitation: async () => null,
+      async transaction(callback) {
+        transactionCalls += 1;
+        return callback({
+          ...transaction,
+          findActiveInvitation: async () => null,
+        });
+      },
+      isMemberLinkUniqueConflict: () => false,
+    };
+
+    await expect(
+      claimGroupInvitation(store, {
+        rawToken: "unknown-token",
+        secret,
+        user: { id: "claimant", email: "friend@example.com" },
+        now,
+      }),
+    ).resolves.toEqual({ kind: "unavailable" });
+    expect(transactionCalls).toBe(0);
+  });
+
+  it("returns a normalized account mismatch without opening a write transaction", async () => {
+    let transactionCalls = 0;
+    const mismatch = activeInvitation(" Friend@Example.COM ");
+    const store: GroupInvitationClaimStore = {
+      findActiveInvitation: async () => mismatch,
+      async transaction(callback) {
+        transactionCalls += 1;
+        return callback({
+          ...successfulClaimTransaction(),
+          findActiveInvitation: async () => mismatch,
+        });
+      },
+      isMemberLinkUniqueConflict: () => false,
+    };
+
+    await expect(
+      claimGroupInvitation(store, {
+        rawToken: "active-token",
+        secret,
+        user: { id: "claimant", email: " Other@Example.COM " },
+        now,
+      }),
+    ).resolves.toEqual({ kind: "account-mismatch" });
+    expect(transactionCalls).toBe(0);
+  });
+
+  it("avoids a second write transaction when replay preflight is unavailable", async () => {
+    const db = await createTestDatabase();
+    await seedDatabase(db);
+    await insertInvitation(db);
+    const store = createGroupInvitationClaimStore(db);
+    let transactionCalls = 0;
+    const spyStore: GroupInvitationClaimStore = {
+      ...store,
+      transaction: (callback) => {
+        transactionCalls += 1;
+        return store.transaction(callback);
+      },
+    };
+    const input = {
+      rawToken: "active-token",
+      secret,
+      user: { id: "claimant", email: "friend@example.com" },
+      now,
+    };
+
+    await expect(claimGroupInvitation(spyStore, input)).resolves.toEqual({
+      kind: "claimed",
+      groupId: "group-a",
+    });
+    await expect(claimGroupInvitation(spyStore, input)).resolves.toEqual({
+      kind: "unavailable",
+    });
+    expect(transactionCalls).toBe(1);
+  });
+
   it("retries a SQLITE_BUSY claim transaction and returns its successful result", async () => {
     let transactionCalls = 0;
     const store: GroupInvitationClaimStore = {
-      findActiveInvitation: async () => null,
+      findActiveInvitation: async () => activeInvitation(),
       async transaction(callback) {
         transactionCalls += 1;
         if (transactionCalls === 1) throw databaseBusyError();
@@ -666,7 +752,7 @@ describe("group invitation claims", () => {
     let transactionCalls = 0;
     const failure = new Error("unexpected database failure");
     const store: GroupInvitationClaimStore = {
-      findActiveInvitation: async () => null,
+      findActiveInvitation: async () => activeInvitation(),
       async transaction() {
         transactionCalls += 1;
         throw failure;
@@ -689,7 +775,7 @@ describe("group invitation claims", () => {
     let transactionCalls = 0;
     const failure = databaseBusyError();
     const store: GroupInvitationClaimStore = {
-      findActiveInvitation: async () => null,
+      findActiveInvitation: async () => activeInvitation(),
       async transaction() {
         transactionCalls += 1;
         throw failure;
