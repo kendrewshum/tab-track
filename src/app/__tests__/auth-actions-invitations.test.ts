@@ -103,6 +103,7 @@ import {
   signupAction,
 } from "@/app/auth-actions";
 import { InviteUserForm } from "@/app/groups/[id]/invite-user-form";
+import ContinueInvitationPage from "@/app/invite/continue/page";
 import { LoginForm } from "@/app/login/login-form";
 import LoginPage from "@/app/login/page";
 import { SignupForm } from "@/app/signup/signup-form";
@@ -815,6 +816,18 @@ describe("invitation-aware authentication pages", () => {
       "Set up your account, then continue to your shared group.",
     );
     expect(textContent(page)).not.toContain("Use the shared invite code");
+  });
+
+  test("uses a native non-prefetching fallback for the claim continuation", () => {
+    mocks.useEffect.mockImplementation(() => undefined);
+
+    const page = ContinueInvitationPage();
+    const fallback = collectElements(page).find(
+      (element) => element.props.href === "/invite/claim",
+    );
+
+    expect(fallback?.type).toBe("a");
+    expect(textContent(fallback)).toBe("Continue");
   });
 
   test.each([

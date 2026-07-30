@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
 
 const CLAIM_PATH = "/invite/claim";
@@ -24,12 +23,12 @@ export default function ContinueInvitationPage() {
       <p className="mt-2 text-sm text-slate-600" role="status">
         Taking you to your shared group.
       </p>
-      <Link
+      <a
         href={CLAIM_PATH}
         className="mt-5 inline-flex rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700"
       >
         Continue
-      </Link>
+      </a>
     </section>
   );
 }
