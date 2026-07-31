@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   cancelGroupInvitation: vi.fn(),
   createGroupAccessManagementStore: vi.fn(),
+  redirect: vi.fn(),
   requireGroupOwner: vi.fn(),
   revalidatePath: vi.fn(),
   revokeGroupAccess: vi.fn(),
@@ -13,6 +14,9 @@ vi.mock("next-auth", () => ({
 }));
 vi.mock("next/cache", () => ({
   revalidatePath: mocks.revalidatePath,
+}));
+vi.mock("next/navigation", () => ({
+  redirect: mocks.redirect,
 }));
 vi.mock("@/auth", () => ({
   signIn: vi.fn(),
@@ -35,6 +39,8 @@ import {
   revokeGroupAccessAction,
 } from "@/app/auth-actions";
 
+const redirectSentinel = new Error("NEXT_REDIRECT");
+
 function formData(fieldName: string, value?: string) {
   const data = new FormData();
   if (value !== undefined) {
@@ -47,6 +53,9 @@ describe("revokeGroupAccessAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createGroupAccessManagementStore.mockReturnValue("management-store");
+    mocks.redirect.mockImplementation(() => {
+      throw redirectSentinel;
+    });
     mocks.requireGroupOwner.mockResolvedValue({
       user: { id: "owner-1" },
       access: { role: "owner" },
@@ -75,14 +84,14 @@ describe("revokeGroupAccessAction", () => {
     expect(mocks.revokeGroupAccess).not.toHaveBeenCalled();
   });
 
-  test("passes only the scoped IDs, revalidates, and reports revoked access", async () => {
+  test("passes only the scoped IDs, revalidates, and redirects with stable feedback", async () => {
     await expect(
       revokeGroupAccessAction(
         "group-1",
         {},
         formData("accessId", "  access-1  "),
       ),
-    ).resolves.toEqual({ success: "Access removed." });
+    ).rejects.toBe(redirectSentinel);
 
     expect(mocks.createGroupAccessManagementStore).toHaveBeenCalledWith({
       mocked: "db",
@@ -98,6 +107,12 @@ describe("revokeGroupAccessAction", () => {
       ["/"],
       ["/groups/group-1"],
     ]);
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/groups/group-1?accessManagement=access-removed",
+    );
+    expect(mocks.revalidatePath.mock.invocationCallOrder[1]).toBeLessThan(
+      mocks.redirect.mock.invocationCallOrder[0],
+    );
   });
 
   test("protects the owner without revalidating", async () => {
@@ -108,28 +123,37 @@ describe("revokeGroupAccessAction", () => {
     ).resolves.toEqual({ error: "The group owner cannot be removed." });
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
-  test("treats inactive access as an idempotent success and revalidates", async () => {
+  test("treats inactive access as an idempotent success and redirects", async () => {
     mocks.revokeGroupAccess.mockResolvedValue({ kind: "not-active" });
 
     await expect(
       revokeGroupAccessAction("group-1", {}, formData("accessId", "access-1")),
-    ).resolves.toEqual({ success: "Access removed." });
+    ).rejects.toBe(redirectSentinel);
 
     expect(mocks.revalidatePath.mock.calls).toEqual([
       ["/"],
       ["/groups/group-1"],
     ]);
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/groups/group-1?accessManagement=access-removed",
+    );
   });
 
-  test("propagates unexpected service errors", async () => {
-    const error = new Error("database unavailable");
-    mocks.revokeGroupAccess.mockRejectedValue(error);
+  test("returns a confirmation-capable retry error without exposing service details", async () => {
+    mocks.revokeGroupAccess.mockRejectedValue(
+      new Error("database unavailable: internal details"),
+    );
 
     await expect(
       revokeGroupAccessAction("group-1", {}, formData("accessId", "access-1")),
-    ).rejects.toBe(error);
+    ).resolves.toEqual({
+      error: "We could not remove that access. Try again.",
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });
 
@@ -138,6 +162,9 @@ describe("cancelGroupInvitationAction", () => {
     vi.clearAllMocks();
     vi.spyOn(Date, "now").mockReturnValue(1_725_000_000_000);
     mocks.createGroupAccessManagementStore.mockReturnValue("management-store");
+    mocks.redirect.mockImplementation(() => {
+      throw redirectSentinel;
+    });
     mocks.requireGroupOwner.mockResolvedValue({
       user: { id: "owner-1" },
       access: { role: "owner" },
@@ -170,14 +197,14 @@ describe("cancelGroupInvitationAction", () => {
     expect(mocks.cancelGroupInvitation).not.toHaveBeenCalled();
   });
 
-  test("uses the authenticated owner and clock with the scoped invitation", async () => {
+  test("uses the owner and clock, then revalidates and redirects with stable feedback", async () => {
     await expect(
       cancelGroupInvitationAction(
         "group-1",
         {},
         formData("invitationId", "  invitation-1  "),
       ),
-    ).resolves.toEqual({ success: "Invitation cancelled." });
+    ).rejects.toBe(redirectSentinel);
 
     expect(mocks.createGroupAccessManagementStore).toHaveBeenCalledWith({
       mocked: "db",
@@ -195,9 +222,15 @@ describe("cancelGroupInvitationAction", () => {
       mocks.cancelGroupInvitation.mock.invocationCallOrder[0],
     );
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/groups/group-1");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/groups/group-1?accessManagement=invitation-cancelled",
+    );
+    expect(mocks.revalidatePath.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.redirect.mock.invocationCallOrder[0],
+    );
   });
 
-  test("treats inactive invitations as idempotently cancelled", async () => {
+  test("treats inactive invitations as idempotently cancelled and redirects", async () => {
     mocks.cancelGroupInvitation.mockResolvedValue({ kind: "not-active" });
 
     await expect(
@@ -206,14 +239,18 @@ describe("cancelGroupInvitationAction", () => {
         {},
         formData("invitationId", "invitation-1"),
       ),
-    ).resolves.toEqual({ success: "Invitation cancelled." });
+    ).rejects.toBe(redirectSentinel);
 
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/groups/group-1");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/groups/group-1?accessManagement=invitation-cancelled",
+    );
   });
 
-  test("propagates unexpected service errors", async () => {
-    const error = new Error("database unavailable");
-    mocks.cancelGroupInvitation.mockRejectedValue(error);
+  test("returns a confirmation-capable retry error without exposing service details", async () => {
+    mocks.cancelGroupInvitation.mockRejectedValue(
+      new Error("database unavailable: internal details"),
+    );
 
     await expect(
       cancelGroupInvitationAction(
@@ -221,6 +258,10 @@ describe("cancelGroupInvitationAction", () => {
         {},
         formData("invitationId", "invitation-1"),
       ),
-    ).rejects.toBe(error);
+    ).resolves.toEqual({
+      error: "We could not cancel that invitation. Try again.",
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });

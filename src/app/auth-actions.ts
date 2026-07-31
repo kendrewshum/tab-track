@@ -3,6 +3,7 @@
 import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { signIn, signOut } from "@/auth";
 import { db } from "@/db";
@@ -294,10 +295,15 @@ export async function revokeGroupAccessAction(
     return { error: "We could not remove that access." };
   }
 
-  const result = await revokeGroupAccess(createGroupAccessManagementStore(db), {
-    groupId,
-    accessId: parsed.data.accessId,
-  });
+  let result: Awaited<ReturnType<typeof revokeGroupAccess>>;
+  try {
+    result = await revokeGroupAccess(createGroupAccessManagementStore(db), {
+      groupId,
+      accessId: parsed.data.accessId,
+    });
+  } catch {
+    return { error: "We could not remove that access. Try again." };
+  }
 
   if (result.kind === "owner-protected") {
     return { error: "The group owner cannot be removed." };
@@ -305,7 +311,7 @@ export async function revokeGroupAccessAction(
 
   revalidatePath("/");
   revalidatePath(`/groups/${groupId}`);
-  return { success: "Access removed." };
+  redirect(`/groups/${groupId}?accessManagement=access-removed`);
 }
 
 export async function cancelGroupInvitationAction(
@@ -320,13 +326,17 @@ export async function cancelGroupInvitationAction(
     return { error: "We could not cancel that invitation." };
   }
 
-  await cancelGroupInvitation(createGroupAccessManagementStore(db), {
-    groupId,
-    invitationId: parsed.data.invitationId,
-    cancelledByUserId: user.id,
-    now: Date.now(),
-  });
+  try {
+    await cancelGroupInvitation(createGroupAccessManagementStore(db), {
+      groupId,
+      invitationId: parsed.data.invitationId,
+      cancelledByUserId: user.id,
+      now: Date.now(),
+    });
+  } catch {
+    return { error: "We could not cancel that invitation. Try again." };
+  }
 
   revalidatePath(`/groups/${groupId}`);
-  return { success: "Invitation cancelled." };
+  redirect(`/groups/${groupId}?accessManagement=invitation-cancelled`);
 }
