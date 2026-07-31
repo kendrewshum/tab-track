@@ -85,7 +85,8 @@ export function serializeExpenseSnapshot(snapshot: ExpenseSnapshot): string {
 }
 
 export function parseExpenseSnapshot(serialized: string): ExpenseSnapshot {
-  return JSON.parse(serialized) as ExpenseSnapshot;
+  const snapshot = JSON.parse(serialized) as ExpenseSnapshot;
+  return createExpenseSnapshot(snapshot, snapshot.splits);
 }
 
 export function createExpenseSnapshot(
@@ -93,8 +94,15 @@ export function createExpenseSnapshot(
   splits: ExpenseSnapshot["splits"]
 ): ExpenseSnapshot {
   return {
-    ...expense,
-    splits: splits.map((split) => ({ ...split })),
+    description: expense.description,
+    amount: expense.amount,
+    paidById: expense.paidById,
+    splitType: expense.splitType,
+    date: expense.date,
+    splits: splits.map((split) => ({
+      memberId: split.memberId,
+      amount: split.amount,
+    })),
   };
 }
 
@@ -197,6 +205,7 @@ export function buildActivityEvents({
               paidById: originalSnapshot.paidById,
               splitType: originalSnapshot.splitType,
               date: originalSnapshot.date,
+              splits: originalSnapshot.splits,
             }
           : expense,
       };
@@ -364,12 +373,13 @@ function buildRevisionChronology(
   while (current && !visited.has(current.id)) {
     chronology.push(current);
     visited.add(current.id);
+    const currentAfterSnapshot: string = current.afterSnapshot;
 
     const successors = fallback.filter(
       (candidate) =>
         !visited.has(candidate.id) &&
         snapshotKey(candidate.beforeSnapshot) ===
-          snapshotKey(current?.afterSnapshot ?? "")
+          snapshotKey(currentAfterSnapshot)
     );
     if (successors.length > 1) {
       return fallback;

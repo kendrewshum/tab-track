@@ -42,6 +42,38 @@ describe("expense snapshot serialization", () => {
     });
   });
 
+  it("projects database rows to domain-only expense snapshot fields", () => {
+    const snapshot = createExpenseSnapshot(
+      {
+        id: "expense-1",
+        groupId: "group-1",
+        description: "Brunch",
+        amount: 18,
+        paidById: "alice",
+        splitType: "equal" as const,
+        date: "2026-04-26",
+        createdAt: "2026-04-26 09:00:00",
+      },
+      [
+        {
+          id: "split-1",
+          expenseId: "expense-1",
+          memberId: "alice",
+          amount: 18,
+        },
+      ],
+    );
+
+    expect(snapshot).toEqual({
+      description: "Brunch",
+      amount: 18,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-26",
+      splits: [{ memberId: "alice", amount: 18 }],
+    });
+  });
+
   it("round-trips a full expense snapshot including split details", () => {
     const snapshot: ExpenseSnapshot = {
       description: "Dinner",
@@ -158,6 +190,20 @@ describe("buildActivityEvents", () => {
       ],
     });
 
+    const withDatabaseFields = (serialized: string, suffix: string) => {
+      const snapshot = parseExpenseSnapshot(serialized);
+      return JSON.stringify({
+        ...snapshot,
+        id: `expense-${suffix}`,
+        groupId: "group-1",
+        createdAt: "2026-04-20 09:00:00",
+        splits: snapshot.splits.map((split, index) => ({
+          ...split,
+          id: `split-${suffix}-${index}`,
+          expenseId: "expense-1",
+        })),
+      });
+    };
     const events = buildActivityEvents({
       expenses: [
         {
@@ -175,15 +221,15 @@ describe("buildActivityEvents", () => {
         {
           id: "revision-a-second",
           expenseId: "expense-1",
-          beforeSnapshot: edited,
-          afterSnapshot: original,
+          beforeSnapshot: withDatabaseFields(edited, "edited"),
+          afterSnapshot: withDatabaseFields(original, "reverted"),
           createdAt: "2026-04-21 12:00:00",
         },
         {
           id: "revision-z-first",
           expenseId: "expense-1",
-          beforeSnapshot: original,
-          afterSnapshot: edited,
+          beforeSnapshot: withDatabaseFields(original, "original"),
+          afterSnapshot: withDatabaseFields(edited, "first-edit"),
           createdAt: "2026-04-21 12:00:00",
         },
       ],
@@ -200,6 +246,67 @@ describe("buildActivityEvents", () => {
       expense: {
         description: "Dinner",
         amount: 40,
+      },
+    });
+  });
+
+  it("reconstructs the original splits on the creation event", () => {
+    const original = serializeExpenseSnapshot({
+      description: "Dinner",
+      amount: 40,
+      paidById: "alice",
+      splitType: "exact",
+      date: "2026-04-20",
+      splits: [
+        { memberId: "alice", amount: 30 },
+        { memberId: "bob", amount: 10 },
+      ],
+    });
+    const edited = serializeExpenseSnapshot({
+      description: "Dinner",
+      amount: 40,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-20",
+      splits: [
+        { memberId: "alice", amount: 20 },
+        { memberId: "bob", amount: 20 },
+      ],
+    });
+
+    const events = buildActivityEvents({
+      expenses: [
+        {
+          id: "expense-1",
+          description: "Dinner",
+          amount: 40,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-20",
+          createdAt: "2026-04-20 09:00:00",
+          splits: parseExpenseSnapshot(edited).splits,
+        },
+      ],
+      revisions: [
+        {
+          id: "revision-1",
+          expenseId: "expense-1",
+          beforeSnapshot: original,
+          afterSnapshot: edited,
+          createdAt: "2026-04-21 12:00:00",
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(events.at(-1)).toMatchObject({
+      type: "expense_created",
+      expense: {
+        splitType: "exact",
+        splits: [
+          { memberId: "alice", amount: 30 },
+          { memberId: "bob", amount: 10 },
+        ],
       },
     });
   });
