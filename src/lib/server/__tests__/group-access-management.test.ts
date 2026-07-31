@@ -29,6 +29,7 @@ import {
   cancelGroupInvitation,
   createGroupAccessManagementStore,
   revokeGroupAccess,
+  type GroupAccessManagementStore,
 } from "@/lib/server/group-access-management";
 
 type TestSchema = {
@@ -362,6 +363,65 @@ describe("revokeGroupAccess", () => {
         .from(groupAccess)
         .where(eq(groupAccess.id, "access-member-b")),
     ).resolves.toEqual([{ id: "access-member-b" }]);
+  });
+
+  it("allows exactly one of two clients to revoke the same member access", async () => {
+    const [db, concurrentDb] = await createTestDatabases(2);
+    if (!db || !concurrentDb) {
+      throw new Error("missing concurrent database");
+    }
+    await seedDatabase(db);
+    const before = await financialState(db);
+
+    let arrivals = 0;
+    let releaseDeletes!: () => void;
+    const bothDeletesReady = new Promise<void>((resolve) => {
+      releaseDeletes = resolve;
+    });
+    const synchronizeDelete = (
+      store: GroupAccessManagementStore,
+    ): GroupAccessManagementStore => ({
+      ...store,
+      async deleteMemberAccess(groupId, accessId) {
+        arrivals += 1;
+        if (arrivals === 2) {
+          releaseDeletes();
+        }
+        await bothDeletesReady;
+        return store.deleteMemberAccess(groupId, accessId);
+      },
+    });
+    const input = {
+      groupId: "group-a",
+      accessId: "access-member-a",
+    };
+
+    const results = await Promise.all([
+      revokeGroupAccess(synchronizeDelete(managementStore(db)), input),
+      revokeGroupAccess(
+        synchronizeDelete(managementStore(concurrentDb)),
+        input,
+      ),
+    ]);
+
+    expect(results.filter((result) => result.kind === "revoked")).toHaveLength(
+      1,
+    );
+    expect(
+      results.filter((result) => result.kind === "not-active"),
+    ).toHaveLength(1);
+    await expect(
+      db
+        .select({ id: groupAccess.id })
+        .from(groupAccess)
+        .where(
+          and(
+            eq(groupAccess.groupId, "group-a"),
+            eq(groupAccess.id, "access-member-a"),
+          ),
+        ),
+    ).resolves.toEqual([]);
+    await expect(financialState(db)).resolves.toEqual(before);
   });
 });
 
