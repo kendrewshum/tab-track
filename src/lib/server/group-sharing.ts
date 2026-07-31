@@ -259,6 +259,7 @@ export function createGroupSharingStore<
                   claimedAt: null,
                   claimedByUserId: null,
                   cancelledAt: null,
+                  cancelledByUserId: null,
                   updatedAt: input.now,
                 },
               });
