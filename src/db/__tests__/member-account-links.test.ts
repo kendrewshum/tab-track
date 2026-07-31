@@ -86,6 +86,9 @@ describe("member account links migration", () => {
         unique: 1,
       }),
     );
+    expect(indexes.rows).not.toContainEqual(
+      expect.objectContaining({ name: "members_group_id_idx" }),
+    );
 
     const indexColumns = await client.execute(
       'PRAGMA index_info("members_group_user_unique")',

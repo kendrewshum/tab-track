@@ -102,16 +102,14 @@ export async function createSignupAccountAttempt(
   }
 
   try {
-    const existingUser = await dependencies.findUserByEmail(
-      validation.data.email,
-    );
+    const [existingUser, passwordHash] = await Promise.all([
+      dependencies.findUserByEmail(validation.data.email),
+      dependencies.hashPassword(validation.data.password),
+    ]);
     if (existingUser) {
       return { success: false, message: SIGNUP_UNAVAILABLE_MESSAGE };
     }
 
-    const passwordHash = await dependencies.hashPassword(
-      validation.data.password,
-    );
     await dependencies.createUser({
       email: validation.data.email,
       displayName: validation.data.displayName,
