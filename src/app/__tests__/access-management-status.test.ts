@@ -53,20 +53,28 @@ describe("AccessManagementStatus", () => {
     expect(status.props["aria-live"]).toBe("polite");
     expect(textContent(status.props.children)).toBe("Access removed.");
     expect(mocks.useEffect).toHaveBeenCalledOnce();
-    expect(mocks.useEffect.mock.calls[0][1]).toEqual(["Access removed."]);
+    expect(mocks.useEffect.mock.calls[0][1]).toBeUndefined();
   });
 
-  test("reruns marker cleanup when a success message arrives after mount", () => {
-    AccessManagementStatus({ message: null });
+  test("registers marker cleanup after every render, including identical messages", () => {
+    AccessManagementStatus({ message: "Access removed." });
     AccessManagementStatus({ message: "Access removed." });
 
-    expect(mocks.useEffect.mock.calls[0][1]).toEqual([null]);
-    expect(mocks.useEffect.mock.calls[1][1]).toEqual(["Access removed."]);
+    expect(mocks.useEffect.mock.calls).toHaveLength(2);
+    expect(mocks.useEffect.mock.calls[0]).toHaveLength(1);
+    expect(mocks.useEffect.mock.calls[1]).toHaveLength(1);
   });
 
-  test("cleans unknown markers without rendering or changing history state", () => {
+  test("cleans unknown markers idempotently without changing history state", () => {
     const historyState = { navigation: "preserved" };
-    const replaceState = vi.fn();
+    const replaceState = vi.fn(
+      (_state: unknown, _unused: string, nextUrl: string) => {
+        window.location.href = new URL(
+          nextUrl,
+          window.location.href,
+        ).toString();
+      },
+    );
     vi.stubGlobal("window", {
       location: {
         href: "https://tab-track.example/groups/group-1?activity=40&accessManagement=%3Cscript%3E&view=all#activity",
@@ -81,6 +89,8 @@ describe("AccessManagementStatus", () => {
 
     const removeMarker = mocks.useEffect.mock.calls[0][0];
     removeMarker();
+    removeMarker();
+    expect(replaceState).toHaveBeenCalledOnce();
     expect(replaceState).toHaveBeenCalledWith(
       historyState,
       "",
