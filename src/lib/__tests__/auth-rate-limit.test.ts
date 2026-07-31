@@ -81,7 +81,7 @@ const attempt = {
 };
 
 describe("authentication rate-limit buckets", () => {
-  it("derives stable opaque descriptors with distinct source and pair policies", () => {
+  it("derives stable opaque descriptors with source, identity, and pair policies", () => {
     const first = buildAuthBucketDescriptors({
       ...attempt,
       secret: "test-secret",
@@ -94,6 +94,7 @@ describe("authentication rate-limit buckets", () => {
     expect(first).toEqual(second);
     expect(first.map(({ kind, limit }) => ({ kind, limit }))).toEqual([
       { kind: "source", limit: 30 },
+      { kind: "identity", limit: 5 },
       { kind: "source-identity", limit: 5 },
     ]);
     expect(first.every(({ bucketKey }) => /^[a-f0-9]{64}$/.test(bucketKey))).toBe(
@@ -141,7 +142,7 @@ describe("authentication rate-limit buckets", () => {
 
 describe("authentication rate-limit reservation", () => {
   it("configures cleanup to outpace the maximum bucket creation rate", () => {
-    const maximumBucketsCreatedPerReservation = 2;
+    const maximumBucketsCreatedPerReservation = 3;
     const expectedRowsCleanedPerReservation =
       AUTH_ATTEMPT_CLEANUP_POLICY.probability *
       AUTH_ATTEMPT_CLEANUP_POLICY.batchLimit;
@@ -191,6 +192,62 @@ describe("authentication rate-limit reservation", () => {
     ).resolves.toMatchObject({ allowed: true });
   });
 
+  it("blocks one identity across rotating trusted sources", async () => {
+    const store = new MemoryAttemptStore();
+    const limiter = createAuthRateLimiter({
+      store,
+      secret: "test-secret",
+      now: () => 1_000,
+    });
+
+    for (let index = 0; index < 5; index += 1) {
+      await expect(
+        limiter.reserve({ ...attempt, source: `203.0.113.${index}` }),
+      ).resolves.toMatchObject({ allowed: true });
+    }
+
+    await expect(
+      limiter.reserve({ ...attempt, source: "198.51.100.1" }),
+    ).resolves.toMatchObject({ allowed: false });
+  });
+
+  it("does not create scoped buckets after the aggregate source is blocked", async () => {
+    const store = new MemoryAttemptStore();
+    const limiter = createAuthRateLimiter({
+      store,
+      secret: "test-secret",
+      now: () => 1_000,
+      shouldCleanup: () => false,
+    });
+
+    for (let index = 0; index < AUTH_RATE_LIMIT_POLICIES.source.limit; index += 1) {
+      await limiter.reserve({
+        ...attempt,
+        identity: `friend-${index}@example.com`,
+      });
+    }
+    const recordCountBeforeBlockedAttempt = store.records.size;
+    const blockedAttempt = {
+      ...attempt,
+      identity: "new-target@example.com",
+    };
+
+    await expect(limiter.reserve(blockedAttempt)).resolves.toMatchObject({
+      allowed: false,
+    });
+
+    const blockedDescriptors = buildAuthBucketDescriptors({
+      ...blockedAttempt,
+      secret: "test-secret",
+    });
+    expect(store.records.size).toBe(recordCountBeforeBlockedAttempt);
+    expect(
+      blockedDescriptors
+        .filter(({ kind }) => kind !== "source")
+        .some(({ bucketKey }) => store.records.has(bucketKey)),
+    ).toBe(false);
+  });
+
   it("success clears the pair and undoes only its aggregate-source reservation", async () => {
     const store = new MemoryAttemptStore();
     const limiter = createAuthRateLimiter({
@@ -208,9 +265,11 @@ describe("authentication rate-limit reservation", () => {
       secret: "test-secret",
     });
     const sourceRecord = store.records.get(descriptors[0].bucketKey);
-    const pairRecord = store.records.get(descriptors[1].bucketKey);
+    const identityRecord = store.records.get(descriptors[1].bucketKey);
+    const pairRecord = store.records.get(descriptors[2].bucketKey);
 
     expect(sourceRecord?.failureCount).toBe(1);
+    expect(identityRecord).toBeUndefined();
     expect(pairRecord).toBeUndefined();
   });
 

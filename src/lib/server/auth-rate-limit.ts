@@ -94,20 +94,22 @@ export function buildAuthBucketDescriptors(
     );
   }
 
+  if (identity) {
+    buckets.push(
+      descriptor(
+        input.secret,
+        "identity",
+        `${input.action}:identity:${identity}`,
+      ),
+    );
+  }
+
   if (source && identity) {
     buckets.push(
       descriptor(
         input.secret,
         "source-identity",
         `${input.action}:source-identity:${source}\0${identity}`,
-      ),
-    );
-  } else if (identity) {
-    buckets.push(
-      descriptor(
-        input.secret,
-        "identity",
-        `${input.action}:identity:${identity}`,
       ),
     );
   }
@@ -137,43 +139,67 @@ export function createAuthRateLimiter({
     }> {
       const reservedAt = now();
       const buckets = buildAuthBucketDescriptors({ ...attempt, secret });
-      const reservation = { buckets };
+      const reservedBuckets: AuthBucketDescriptor[] = [];
+      const reservation = { buckets: reservedBuckets };
       if (buckets.length === 0) {
         return { allowed: true, reservation };
       }
 
-      const records = await store.reserve(buckets, reservedAt);
-      if (shouldCleanup()) {
+      const descriptorsByKey = new Map(
+        buckets.map((bucket) => [bucket.bucketKey, bucket]),
+      );
+      const findBlockedRecords = (records: AuthAttemptRecord[]) => records.filter((record) => {
+        const bucket = descriptorsByKey.get(record.bucketKey);
+        return bucket && record.failureCount > bucket.limit;
+      });
+      const blockedResult = (blockedRecords: AuthAttemptRecord[]) => {
+        const retryAt = Math.max(
+          ...blockedRecords.map((record) => record.expiresAt),
+        );
+        return {
+          allowed: false as const,
+          reservation,
+          retryAfterSeconds: Math.max(
+            1,
+            Math.ceil((retryAt - reservedAt) / 1_000),
+          ),
+        };
+      };
+      const runCleanup = async () => {
+        if (!shouldCleanup()) return;
         await store
           .cleanupExpired(
             reservedAt,
             AUTH_ATTEMPT_CLEANUP_POLICY.batchLimit,
           )
           .catch(() => undefined);
-      }
-      const descriptorsByKey = new Map(
-        buckets.map((bucket) => [bucket.bucketKey, bucket]),
-      );
-      const blockedRecords = records.filter((record) => {
-        const bucket = descriptorsByKey.get(record.bucketKey);
-        return bucket && record.failureCount > bucket.limit;
-      });
-
-      if (blockedRecords.length === 0) {
-        return { allowed: true, reservation };
-      }
-
-      const retryAt = Math.max(
-        ...blockedRecords.map((record) => record.expiresAt),
-      );
-      return {
-        allowed: false,
-        reservation,
-        retryAfterSeconds: Math.max(
-          1,
-          Math.ceil((retryAt - reservedAt) / 1_000),
-        ),
       };
+
+      const sourceBuckets = buckets.filter(({ kind }) => kind === "source");
+      if (sourceBuckets.length > 0) {
+        const sourceRecords = await store.reserve(sourceBuckets, reservedAt);
+        reservedBuckets.push(...sourceBuckets);
+        const blockedSourceRecords = findBlockedRecords(sourceRecords);
+        if (blockedSourceRecords.length > 0) {
+          await runCleanup();
+          return blockedResult(blockedSourceRecords);
+        }
+      }
+
+      const scopedBuckets = buckets.filter(({ kind }) => kind !== "source");
+      if (scopedBuckets.length > 0) {
+        const scopedRecords = await store.reserve(scopedBuckets, reservedAt);
+        reservedBuckets.push(...scopedBuckets);
+        const blockedScopedRecords = findBlockedRecords(scopedRecords);
+        if (blockedScopedRecords.length > 0) {
+          await runCleanup();
+          return blockedResult(blockedScopedRecords);
+        }
+      }
+
+      await runCleanup();
+
+      return { allowed: true, reservation };
     },
 
     async succeed(reservation: AuthRateLimitReservation): Promise<void> {

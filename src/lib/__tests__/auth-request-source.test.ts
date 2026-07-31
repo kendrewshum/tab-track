@@ -12,7 +12,7 @@ describe("trusted authentication request source", () => {
     expect(
       resolveTrustedRequestSource({
         isVercel: true,
-        forwardedFor: "203.0.113.10",
+        vercelForwardedFor: "203.0.113.10",
       }),
     ).toBe("203.0.113.10");
   });
@@ -21,7 +21,7 @@ describe("trusted authentication request source", () => {
     expect(
       resolveTrustedRequestSource({
         isVercel: true,
-        forwardedFor: " 203.0.113.10, 198.51.100.20 ",
+        vercelForwardedFor: " 203.0.113.10, 198.51.100.20 ",
       }),
     ).toBe("203.0.113.10");
   });
@@ -30,7 +30,7 @@ describe("trusted authentication request source", () => {
     expect(
       resolveTrustedRequestSource({
         isVercel: false,
-        forwardedFor: "203.0.113.10",
+        vercelForwardedFor: "203.0.113.10",
       }),
     ).toBeNull();
   });
@@ -39,13 +39,13 @@ describe("trusted authentication request source", () => {
     expect(
       resolveTrustedRequestSource({
         isVercel: true,
-        forwardedFor: null,
+        vercelForwardedFor: null,
       }),
     ).toBeNull();
     expect(
       resolveTrustedRequestSource({
         isVercel: true,
-        forwardedFor: " , ",
+        vercelForwardedFor: " , ",
       }),
     ).toBeNull();
   });
@@ -69,7 +69,7 @@ describe("trusted authentication request source", () => {
     };
     const source = resolveTrustedRequestSource({
       isVercel: true,
-      forwardedFor: "203.0.113.10, 198.51.100.20",
+      vercelForwardedFor: "203.0.113.10, 198.51.100.20",
     });
     const limiter = createAuthRateLimiter({
       store,
@@ -85,6 +85,9 @@ describe("trusted authentication request source", () => {
 
     expect(reservedBuckets[0].map(({ kind }) => kind)).toEqual([
       "source",
+    ]);
+    expect(reservedBuckets[1].map(({ kind }) => kind)).toEqual([
+      "identity",
       "source-identity",
     ]);
     expect(JSON.stringify(reservedBuckets)).not.toContain("203.0.113.10");

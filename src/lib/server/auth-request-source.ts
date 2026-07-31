@@ -2,18 +2,18 @@ import { headers } from "next/headers";
 
 type ResolveTrustedRequestSourceInput = {
   isVercel: boolean;
-  forwardedFor: string | null;
+  vercelForwardedFor: string | null;
 };
 
 export function resolveTrustedRequestSource({
   isVercel,
-  forwardedFor,
+  vercelForwardedFor,
 }: ResolveTrustedRequestSourceInput): string | null {
-  if (!isVercel || !forwardedFor) {
+  if (!isVercel || !vercelForwardedFor) {
     return null;
   }
 
-  const source = forwardedFor.split(",", 1)[0]?.trim();
+  const source = vercelForwardedFor.split(",", 1)[0]?.trim();
   return source || null;
 }
 
@@ -21,6 +21,6 @@ export async function getTrustedRequestSource(): Promise<string | null> {
   const requestHeaders = await headers();
   return resolveTrustedRequestSource({
     isVercel: Boolean(process.env.VERCEL),
-    forwardedFor: requestHeaders.get("x-forwarded-for"),
+    vercelForwardedFor: requestHeaders.get("x-vercel-forwarded-for"),
   });
 }
