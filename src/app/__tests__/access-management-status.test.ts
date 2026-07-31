@@ -53,7 +53,15 @@ describe("AccessManagementStatus", () => {
     expect(status.props["aria-live"]).toBe("polite");
     expect(textContent(status.props.children)).toBe("Access removed.");
     expect(mocks.useEffect).toHaveBeenCalledOnce();
-    expect(mocks.useEffect.mock.calls[0][1]).toEqual([]);
+    expect(mocks.useEffect.mock.calls[0][1]).toEqual(["Access removed."]);
+  });
+
+  test("reruns marker cleanup when a success message arrives after mount", () => {
+    AccessManagementStatus({ message: null });
+    AccessManagementStatus({ message: "Access removed." });
+
+    expect(mocks.useEffect.mock.calls[0][1]).toEqual([null]);
+    expect(mocks.useEffect.mock.calls[1][1]).toEqual(["Access removed."]);
   });
 
   test("cleans unknown markers without rendering or changing history state", () => {

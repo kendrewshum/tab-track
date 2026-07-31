@@ -18,7 +18,7 @@ export function AccessManagementStatus({
     }
 
     window.history.replaceState(window.history.state, "", cleanUrl);
-  }, []);
+  }, [message]);
 
   if (!message) {
     return null;
