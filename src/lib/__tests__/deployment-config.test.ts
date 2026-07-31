@@ -36,4 +36,17 @@ describe("deployment configuration", () => {
     expect(vercelJson.buildCommand).toBe("npm run build");
     expect(vercelJson.buildCommand).not.toContain("db:push");
   });
+
+  it("documents migration-ledger adoption before migrating existing pushed databases", () => {
+    const deploymentGuide = readFileSync(
+      join(process.cwd(), "docs/deployment.md"),
+      "utf8",
+    );
+
+    expect(deploymentGuide).toContain("Existing databases created by `db:push`");
+    expect(deploymentGuide).toContain("Do not run `npm run db:migrate`");
+    expect(deploymentGuide).toContain("__drizzle_migrations");
+    expect(deploymentGuide).toContain("exact deployed revision");
+    expect(deploymentGuide).toContain("backup or restore point");
+  });
 });
