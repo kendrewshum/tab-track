@@ -218,6 +218,24 @@ describe("percentage split", () => {
     expect(total(splits)).toBe(99.99);
   });
 
+  it("handles large incomplete percentage previews in bounded work", () => {
+    const splits = computeSplits(
+      "percentage",
+      80000001234567.89,
+      ["alice", "bob"],
+      { percentages: { alice: 0, bob: 0 } },
+      "alice",
+    );
+
+    expect(splits).toHaveLength(2);
+    expect(
+      splits.reduce(
+        (sum, split) => sum + Math.round(split.amount * 100),
+        0,
+      ),
+    ).toBe(Math.round(80000001234567.89 * 100));
+  });
+
   it("does not subtract a negative remainder from a zero-percent participant", () => {
     const splits = computeSplits(
       "percentage",
