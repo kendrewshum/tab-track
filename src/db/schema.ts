@@ -77,7 +77,6 @@ export const members = sqliteTable(
       .default(sql`(datetime('now'))`),
   },
   (table) => ({
-    groupIdIdx: index("members_group_id_idx").on(table.groupId),
     groupUserUniqueIndex: uniqueIndex("members_group_user_unique").on(
       table.groupId,
       table.userId

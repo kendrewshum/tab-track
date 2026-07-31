@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const REQUIRED_INDEXES = {
   group_access_user_id_idx: ["user_id"],
-  members_group_id_idx: ["group_id"],
+  members_group_user_unique: ["group_id", "user_id"],
   expenses_group_id_date_idx: ["group_id", "date"],
   expense_splits_expense_id_idx: ["expense_id"],
   expense_revisions_expense_id_idx: ["expense_id"],
