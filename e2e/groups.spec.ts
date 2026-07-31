@@ -111,7 +111,6 @@ function projectBrowserContextOptions(
     hasTouch,
     isMobile,
     locale,
-    screen,
     timezoneId,
     userAgent,
     viewport,
@@ -123,7 +122,6 @@ function projectBrowserContextOptions(
     ...(hasTouch !== undefined ? { hasTouch } : {}),
     ...(isMobile !== undefined ? { isMobile } : {}),
     ...(locale !== undefined ? { locale } : {}),
-    ...(screen !== undefined ? { screen } : {}),
     ...(timezoneId !== undefined ? { timezoneId } : {}),
     ...(userAgent !== undefined ? { userAgent } : {}),
     ...(viewport !== undefined ? { viewport } : {}),
@@ -929,13 +927,22 @@ test.describe("Group management", () => {
 
         releaseHeldPost();
         await removePromise;
-        await expect(ownerPage).toHaveURL(
-          `${groupPath}?accessManagement=access-removed`,
-        );
         await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
+        const accessRemovedStatus = appAccessSection(ownerPage).locator(
+          ':scope > [role="status"]',
+        );
+        await expect(accessRemovedStatus).toHaveText("Access removed.");
+        await expect
+          .poll(
+            () =>
+              new URL(ownerPage.url()).searchParams.has("accessManagement"),
+          )
+          .toBe(false);
+        await expect(ownerPage).toHaveURL(groupPath);
+        await expect(accessRemovedStatus).toHaveText("Access removed.");
         await expect(
           appAccessSection(ownerPage).locator(':scope > [role="status"]'),
-        ).toHaveText("Access removed.");
+        ).toHaveCount(1);
         await expect(accountAccessRow(ownerPage, peer.email)).toBeVisible();
         await expect(
           accountAccessRow(ownerPage, peer.email).getByRole("button", {
@@ -954,6 +961,12 @@ test.describe("Group management", () => {
       await expect(targetPage.getByText("404", { exact: true })).toBeVisible();
       await expect(targetPage.locator("body")).not.toContainText(groupName);
 
+      await ownerPage.reload();
+      await expect(
+        appAccessSection(ownerPage).locator(':scope > [role="status"]'),
+      ).toHaveCount(0);
+      await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
+      await expect(accountAccessRow(ownerPage, peer.email)).toBeVisible();
       await expectLedgerEvidence(ownerPage, expenseDescription);
       await expect(
         ownerPage
@@ -966,6 +979,11 @@ test.describe("Group management", () => {
       await expect(
         ownerPage.getByText(`Shared with ${target.email}.`),
       ).toBeVisible();
+      await expect(
+        appAccessSection(ownerPage).getByText("Access removed.", {
+          exact: true,
+        }),
+      ).toHaveCount(0);
       const restoredTargetRow = accountAccessRow(ownerPage, target.email);
       await expect(restoredTargetRow.getByLabel("Ledger member")).toHaveValue(
         targetMemberId!,
@@ -1107,15 +1125,24 @@ test.describe("Group management", () => {
       );
       await cancelConfirm.click();
 
-      await expect(ownerPage).toHaveURL(
-        `${groupPath}?accessManagement=invitation-cancelled`,
-      );
       await expect(
         pendingInvitationRow(ownerPage, cancelledEmail),
       ).toHaveCount(0);
-      await expect(
-        appAccessSection(ownerPage).locator(':scope > [role="status"]'),
-      ).toHaveText("Invitation cancelled.");
+      const invitationCancelledStatus = appAccessSection(ownerPage).locator(
+        ':scope > [role="status"]',
+      );
+      await expect(invitationCancelledStatus).toHaveText(
+        "Invitation cancelled.",
+      );
+      await expect
+        .poll(
+          () => new URL(ownerPage.url()).searchParams.has("accessManagement"),
+        )
+        .toBe(false);
+      await expect(ownerPage).toHaveURL(groupPath);
+      await expect(invitationCancelledStatus).toHaveText(
+        "Invitation cancelled.",
+      );
       await expect(
         pendingInvitationRow(ownerPage, unrelatedEmail),
       ).toBeVisible();
@@ -1124,6 +1151,17 @@ test.describe("Group management", () => {
           name: "Cancel invitation",
         }),
       ).not.toBeFocused();
+
+      await ownerPage.reload();
+      await expect(
+        appAccessSection(ownerPage).locator(':scope > [role="status"]'),
+      ).toHaveCount(0);
+      await expect(
+        pendingInvitationRow(ownerPage, cancelledEmail),
+      ).toHaveCount(0);
+      await expect(
+        pendingInvitationRow(ownerPage, unrelatedEmail),
+      ).toBeVisible();
 
       await cancelledLinkPage.goto(cancelledPath);
       await expectProjectDeviceProfile(cancelledLinkPage, testInfo);
