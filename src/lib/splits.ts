@@ -65,18 +65,36 @@ export function computeSplits(
         : [...Array.from({ length: n }, (_, i) => i).filter((i) => i !== payerIdx), payerIdx];
 
     let centsRemaining = Math.abs(diff);
-    while (centsRemaining > 0) {
-      let adjustedThisPass = false;
-      for (const participantIndex of order) {
-        if (centsRemaining === 0) break;
-        if (step < 0 && result[participantIndex] === 0) continue;
-
-        result[participantIndex] += step;
-        centsRemaining--;
-        adjustedThisPass = true;
+    if (step > 0) {
+      const centsPerParticipant = Math.floor(centsRemaining / order.length);
+      const participantsWithExtraCent = centsRemaining % order.length;
+      order.forEach((participantIndex, orderIndex) => {
+        result[participantIndex] +=
+          centsPerParticipant +
+          (orderIndex < participantsWithExtraCent ? 1 : 0);
+      });
+      centsRemaining = 0;
+    } else {
+      let eligible = order.filter((participantIndex) => result[participantIndex] > 0);
+      while (centsRemaining > 0 && eligible.length > 0) {
+        const centsPerParticipant = Math.max(
+          1,
+          Math.floor(centsRemaining / eligible.length),
+        );
+        for (const participantIndex of eligible) {
+          if (centsRemaining === 0) break;
+          const centsToRemove = Math.min(
+            result[participantIndex],
+            centsPerParticipant,
+            centsRemaining,
+          );
+          result[participantIndex] -= centsToRemove;
+          centsRemaining -= centsToRemove;
+        }
+        eligible = eligible.filter(
+          (participantIndex) => result[participantIndex] > 0,
+        );
       }
-
-      if (!adjustedThisPass) break;
     }
 
     const isRepresentableCurrency = (valueInCents: number) =>
