@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-export type AuthRateLimitAction = "login" | "signup";
+export type AuthRateLimitAction = "login" | "signup" | "claim";
 export type AuthBucketKind = "source" | "identity" | "source-identity";
 
 export type AuthRateLimitAttempt = {

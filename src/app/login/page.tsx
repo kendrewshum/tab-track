@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
+import { GROUP_INVITATION_COOKIE_NAME } from "@/lib/server/group-invitation-cookie";
 import { getCurrentUser } from "@/lib/server/session";
 import { LoginForm } from "./login-form";
 
@@ -7,8 +9,11 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
+  const hasGroupInvitation = Boolean(
+    (await cookies()).get(GROUP_INVITATION_COOKIE_NAME)?.value,
+  );
   if (user) {
-    redirect("/");
+    redirect(hasGroupInvitation ? "/invite/claim" : "/");
   }
 
   return (
@@ -20,7 +25,7 @@ export default async function LoginPage() {
             Sign in to see the groups that belong to you.
           </p>
         </div>
-        <LoginForm />
+        <LoginForm hasGroupInvitation={hasGroupInvitation} />
       </div>
     </div>
   );

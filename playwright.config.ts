@@ -42,6 +42,7 @@ export default defineConfig({
     env: {
       APP_INVITE_CODE: "test-invite-code",
       AUTH_SECRET: "test-auth-secret-for-playwright",
+      E2E_ALLOW_INSECURE_GROUP_INVITATION_COOKIE: "1",
       LEGACY_GROUP_ACCESS_MAP:
         '[{"groupName":"Austin 2026","ownerEmail":"owner@example.com","memberEmails":["friend@example.com"]}]',
       TURSO_DATABASE_URL: `file:${testDbPath}`,

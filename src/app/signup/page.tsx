@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
+import { GROUP_INVITATION_COOKIE_NAME } from "@/lib/server/group-invitation-cookie";
 import { getCurrentUser } from "@/lib/server/session";
 import { SignupForm } from "./signup-form";
 
@@ -7,8 +9,11 @@ export const dynamic = "force-dynamic";
 
 export default async function SignupPage() {
   const user = await getCurrentUser();
+  const hasGroupInvitation = Boolean(
+    (await cookies()).get(GROUP_INVITATION_COOKIE_NAME)?.value,
+  );
   if (user) {
-    redirect("/");
+    redirect(hasGroupInvitation ? "/invite/claim" : "/");
   }
 
   return (
@@ -17,10 +22,12 @@ export default async function SignupPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Create Account</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Use the shared invite code so only your crew gets into the app.
+            {hasGroupInvitation
+              ? "Set up your account, then continue to your shared group."
+              : "Use the shared invite code so only your crew gets into the app."}
           </p>
         </div>
-        <SignupForm />
+        <SignupForm hasGroupInvitation={hasGroupInvitation} />
       </div>
     </div>
   );

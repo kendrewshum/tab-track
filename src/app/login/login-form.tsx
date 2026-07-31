@@ -7,16 +7,36 @@ import { type AuthFormState, loginAction } from "@/app/auth-actions";
 
 const initialState: AuthFormState = {};
 
-export function LoginForm() {
+export function LoginForm({
+  hasGroupInvitation,
+}: {
+  hasGroupInvitation: boolean;
+}) {
   const [state, action, pending] = useActionState(loginAction, initialState);
 
   return (
     <form action={action} className="space-y-5">
+      {hasGroupInvitation ? (
+        <p
+          className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
+          role="status"
+        >
+          Sign in to accept your group invitation.
+        </p>
+      ) : null}
+
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+        <label
+          className="block text-sm font-medium text-slate-700 mb-1.5"
+          htmlFor="login-email"
+        >
+          Email
+        </label>
         <input
+          id="login-email"
           name="email"
           type="email"
+          autoComplete="email"
           required
           placeholder="you@example.com"
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -24,10 +44,17 @@ export function LoginForm() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+        <label
+          className="block text-sm font-medium text-slate-700 mb-1.5"
+          htmlFor="login-password"
+        >
+          Password
+        </label>
         <input
+          id="login-password"
           name="password"
           type="password"
+          autoComplete="current-password"
           required
           placeholder="Your password"
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"

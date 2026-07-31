@@ -138,6 +138,32 @@ describe("authentication rate-limit buckets", () => {
     expect(login).toEqual(normalized);
     expect(signup).not.toEqual(login);
   });
+
+  it("isolates claim attempts with HMAC-only descriptors", () => {
+    const claim = buildAuthBucketDescriptors({
+      ...attempt,
+      action: "claim",
+      secret: "test-secret",
+    });
+    const login = buildAuthBucketDescriptors({
+      ...attempt,
+      action: "login",
+      secret: "test-secret",
+    });
+    const signup = buildAuthBucketDescriptors({
+      ...attempt,
+      action: "signup",
+      secret: "test-secret",
+    });
+
+    expect(claim).not.toEqual(login);
+    expect(claim).not.toEqual(signup);
+    expect(
+      claim.every(({ bucketKey }) => /^[a-f0-9]{64}$/.test(bucketKey)),
+    ).toBe(true);
+    expect(JSON.stringify(claim)).not.toContain("203.0.113.10");
+    expect(JSON.stringify(claim)).not.toContain("friend@example.com");
+  });
 });
 
 describe("authentication rate-limit reservation", () => {

@@ -2,7 +2,10 @@ import type {
   AuthRateLimitAttempt,
   AuthRateLimitReservation,
 } from "@/lib/server/auth-rate-limit";
-import { validateSignupInput } from "@/lib/signup";
+import {
+  validateSignupInput,
+  validateSignupProfile,
+} from "@/lib/signup";
 
 export const SIGNUP_UNAVAILABLE_MESSAGE =
   "We could not create an account with those details. Check them or try again later.";
@@ -32,6 +35,7 @@ type SignupAccountDependencies = {
     displayName: string;
     passwordHash: string;
   }): Promise<unknown>;
+  authorizeAlternativeInvite?(normalizedEmail: string): Promise<boolean>;
 };
 
 type SignupAccountResult =
@@ -62,6 +66,27 @@ export async function createSignupAccountAttempt(
     return { success: false, message: SIGNUP_UNAVAILABLE_MESSAGE };
   }
 
+  const profileValidation = validateSignupProfile({
+    email: input.email,
+    displayName: input.displayName,
+    password: input.password,
+  });
+  if (!profileValidation.success) {
+    return { success: false, message: profileValidation.message };
+  }
+
+  let alternativeInviteAuthorized = false;
+  if (dependencies.authorizeAlternativeInvite) {
+    try {
+      alternativeInviteAuthorized =
+        await dependencies.authorizeAlternativeInvite(
+          profileValidation.data.email,
+        );
+    } catch {
+      alternativeInviteAuthorized = false;
+    }
+  }
+
   const validation = validateSignupInput(
     {
       email: input.email,
@@ -70,22 +95,21 @@ export async function createSignupAccountAttempt(
       inviteCode: input.inviteCode,
     },
     input.expectedInviteCode,
+    { alternativeInviteAuthorized },
   );
   if (!validation.success) {
     return { success: false, message: validation.message };
   }
 
   try {
-    const existingUser = await dependencies.findUserByEmail(
-      validation.data.email,
-    );
+    const [existingUser, passwordHash] = await Promise.all([
+      dependencies.findUserByEmail(validation.data.email),
+      dependencies.hashPassword(validation.data.password),
+    ]);
     if (existingUser) {
       return { success: false, message: SIGNUP_UNAVAILABLE_MESSAGE };
     }
 
-    const passwordHash = await dependencies.hashPassword(
-      validation.data.password,
-    );
     await dependencies.createUser({
       email: validation.data.email,
       displayName: validation.data.displayName,

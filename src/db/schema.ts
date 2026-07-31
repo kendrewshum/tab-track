@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -82,6 +83,44 @@ export const members = sqliteTable(
       table.userId
     ),
   })
+);
+
+export const groupInvitations = sqliteTable(
+  "group_invitations",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role", { enum: ["member"] }).notNull().default("member"),
+    memberId: text("member_id").references(() => members.id, {
+      onDelete: "set null",
+    }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    claimedAt: integer("claimed_at"),
+    claimedByUserId: text("claimed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    cancelledAt: integer("cancelled_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => ({
+    roleCheck: check(
+      "group_invitations_role_check",
+      sql`${table.role} = 'member'`,
+    ),
+    groupEmailUniqueIndex: uniqueIndex("group_invitations_group_email_unique").on(
+      table.groupId,
+      table.email,
+    ),
+    tokenHashUniqueIndex: uniqueIndex("group_invitations_token_hash_unique").on(
+      table.tokenHash,
+    ),
+    expiresAtIdx: index("group_invitations_expires_at_idx").on(table.expiresAt),
+  }),
 );
 
 export const expenses = sqliteTable(
