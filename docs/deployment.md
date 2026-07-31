@@ -77,9 +77,11 @@ Adopt Preview first, then repeat the same checks independently for Production:
    COMMIT;
    ```
 
-7. Query `__drizzle_migrations` and verify the stored hash and timestamp before
-   running `npm run db:migrate`. Drizzle will now skip the adopted migrations
-   and apply only migrations newer than the recorded timestamp.
+7. Query `__drizzle_migrations` and verify the stored hash and timestamp. Then
+   check out the reviewed release revision you intend to deploy, review its
+   newer migration files, and run `npm run db:migrate` from that checkout.
+   Drizzle will skip the adopted migrations and apply only migrations newer
+   than the recorded timestamp.
 
 If the deployed schema cannot be matched exactly to a committed revision, do
 not guess a baseline. Restore a clone, reconcile it with a reviewed corrective

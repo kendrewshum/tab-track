@@ -48,5 +48,6 @@ describe("deployment configuration", () => {
     expect(deploymentGuide).toContain("__drizzle_migrations");
     expect(deploymentGuide).toContain("exact deployed revision");
     expect(deploymentGuide).toContain("backup or restore point");
+    expect(deploymentGuide).toContain("reviewed release revision");
   });
 });
