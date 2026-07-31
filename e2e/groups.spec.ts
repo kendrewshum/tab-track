@@ -929,7 +929,13 @@ test.describe("Group management", () => {
 
         releaseHeldPost();
         await removePromise;
+        await expect(ownerPage).toHaveURL(
+          `${groupPath}?accessManagement=access-removed`,
+        );
         await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
+        await expect(
+          appAccessSection(ownerPage).locator(':scope > [role="status"]'),
+        ).toHaveText("Access removed.");
         await expect(accountAccessRow(ownerPage, peer.email)).toBeVisible();
         await expect(
           accountAccessRow(ownerPage, peer.email).getByRole("button", {
@@ -1101,9 +1107,15 @@ test.describe("Group management", () => {
       );
       await cancelConfirm.click();
 
+      await expect(ownerPage).toHaveURL(
+        `${groupPath}?accessManagement=invitation-cancelled`,
+      );
       await expect(
         pendingInvitationRow(ownerPage, cancelledEmail),
       ).toHaveCount(0);
+      await expect(
+        appAccessSection(ownerPage).locator(':scope > [role="status"]'),
+      ).toHaveText("Invitation cancelled.");
       await expect(
         pendingInvitationRow(ownerPage, unrelatedEmail),
       ).toBeVisible();
