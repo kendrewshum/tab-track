@@ -164,6 +164,26 @@ describe("parseExpenseForm", () => {
     }
   });
 
+  it("preserves exact cents for large safe-range percentage splits", () => {
+    const formData = validExpenseForm("percentage");
+    formData.set("amount", "80000001234567.89");
+    formData.set("pct_alice", "49");
+    formData.set("pct_bob", "51");
+
+    const result = parseExpenseForm(formData);
+
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) {
+      expect(
+        result.value.splits.reduce(
+          (total, split) => total + Math.round(split.amount * 100),
+          0,
+        ),
+      ).toBe(Math.round(result.value.amount * 100));
+      expect(result.value.splits.every((split) => split.amount >= 0)).toBe(true);
+    }
+  });
+
   it("accepts exact values totaling the expense amount", () => {
     const formData = validExpenseForm("exact");
     formData.set("amount", "10.00");

@@ -65,13 +65,51 @@ export function computeSplits(
         : [...Array.from({ length: n }, (_, i) => i).filter((i) => i !== payerIdx), payerIdx];
 
     let centsRemaining = Math.abs(diff);
-    for (const participantIndex of order) {
-      if (centsRemaining === 0) break;
-      if (step < 0 && result[participantIndex] === 0) continue;
+    while (centsRemaining > 0) {
+      let adjustedThisPass = false;
+      for (const participantIndex of order) {
+        if (centsRemaining === 0) break;
+        if (step < 0 && result[participantIndex] === 0) continue;
 
-      result[participantIndex] += step;
-      centsRemaining--;
+        result[participantIndex] += step;
+        centsRemaining--;
+        adjustedThisPass = true;
+      }
+
+      if (!adjustedThisPass) break;
     }
+
+    const isRepresentableCurrency = (valueInCents: number) =>
+      Math.round((valueInCents / 100) * 100) === valueInCents;
+    for (let index = 0; index < result.length; index++) {
+      if (isRepresentableCurrency(result[index])) continue;
+
+      let balanced = false;
+      for (let otherIndex = 0; otherIndex < result.length && !balanced; otherIndex++) {
+        if (otherIndex === index) continue;
+
+        for (let distance = 1; distance <= 100 && !balanced; distance++) {
+          for (const adjustment of [distance, -distance]) {
+            const adjusted = result[index] + adjustment;
+            const balancedOther = result[otherIndex] - adjustment;
+            if (
+              adjusted < 0 ||
+              balancedOther < 0 ||
+              !isRepresentableCurrency(adjusted) ||
+              !isRepresentableCurrency(balancedOther)
+            ) {
+              continue;
+            }
+
+            result[index] = adjusted;
+            result[otherIndex] = balancedOther;
+            balanced = true;
+            break;
+          }
+        }
+      }
+    }
+
     return result.map((c) => c / 100);
   };
 
