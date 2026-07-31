@@ -18,6 +18,7 @@ import {
   users,
 } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
+import { getAccessManagementStatus } from "@/lib/access-management-status";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { buildPendingInvitationRows } from "@/lib/group-invitations";
 import { buildAccountMemberLinkRows } from "@/lib/member-account-links";
@@ -48,11 +49,17 @@ export default async function GroupPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ activity?: string | string[] }>;
+  searchParams: Promise<{
+    activity?: string | string[];
+    accessManagement?: string | string[];
+  }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const { access } = await requireGroupAccess(id);
   const canManageGroup = access.role === "owner";
+  const accessManagementStatus = getAccessManagementStatus(
+    resolvedSearchParams.accessManagement,
+  );
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();
@@ -489,6 +496,15 @@ export default async function GroupPage({
       {canManageGroup && (
         <section>
           <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
+          {accessManagementStatus ? (
+            <p
+              className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
+              role="status"
+              aria-live="polite"
+            >
+              {accessManagementStatus}
+            </p>
+          ) : null}
           <div className="bg-white border border-slate-200 rounded-xl p-4">
             <p className="text-sm text-slate-500 mb-3">
               Registered accounts receive access immediately. Everyone else receives an

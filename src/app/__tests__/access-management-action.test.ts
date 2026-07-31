@@ -292,7 +292,7 @@ describe("AccessManagementAction", () => {
     ).toBe(true);
   });
 
-  test("uses contrast-compliant accessible success feedback for the current submission", () => {
+  test("does not render redirect-driven success feedback inside a target row", () => {
     const { elements } = renderAction({
       kind: "cancel",
       confirming: true,
@@ -302,8 +302,7 @@ describe("AccessManagementAction", () => {
     });
 
     const status = elements.find((element) => element.props.role === "status");
-    expect(textContent(status?.props.children)).toBe("Invitation cancelled.");
-    expect(status?.props.className).toContain("text-green-700");
+    expect(status).toBeUndefined();
   });
 
   test("requests confirmation focus only after opening", () => {
@@ -325,7 +324,7 @@ describe("AccessManagementAction", () => {
     expect(open.triggerFocus).not.toHaveBeenCalled();
   });
 
-  test("marks Keep for trigger restoration but not a successful submission", () => {
+  test("marks Keep for trigger restoration", () => {
     const manualClose = renderAction({
       kind: "cancel",
       confirming: true,
@@ -339,21 +338,6 @@ describe("AccessManagementAction", () => {
     expect(manualClose.restoreTriggerFocusRef.current).toBe(true);
     expect(manualClose.setAwaitingResult).toHaveBeenCalledWith(false);
     expect(manualClose.setConfirming).toHaveBeenCalledWith(false);
-
-    vi.clearAllMocks();
-    const successClose = renderAction({
-      kind: "cancel",
-      confirming: true,
-      state: { success: "Invitation cancelled." },
-      awaitingResult: true,
-      submittedState: {},
-      restoreTriggerFocus: true,
-    });
-    findEffectByDependencies(
-      (dependencies) => dependencies.length === 3,
-    )?.();
-    expect(successClose.restoreTriggerFocusRef.current).toBe(false);
-    expect(successClose.setConfirming).toHaveBeenCalledWith(false);
   });
 
   test("requests trigger focus after a manual confirmation close", () => {

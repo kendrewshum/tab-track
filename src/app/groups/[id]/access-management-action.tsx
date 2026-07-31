@@ -66,13 +66,6 @@ export function AccessManagementAction({
     awaitingResult && !pending && state !== submittedStateRef.current;
 
   React.useEffect(() => {
-    if (currentSubmissionComplete && state.success && confirming) {
-      restoreTriggerFocusRef.current = false;
-      setConfirming(false);
-    }
-  }, [currentSubmissionComplete, state.success, confirming]);
-
-  React.useEffect(() => {
     if (confirming) {
       confirmButtonRef.current?.focus();
     } else if (
@@ -163,11 +156,6 @@ export function AccessManagementAction({
           {content.triggerLabel}
         </button>
       )}
-      {currentSubmissionComplete && state.success ? (
-        <p className="mt-2 break-words text-sm text-green-700" role="status">
-          {state.success}
-        </p>
-      ) : null}
     </div>
   );
 }
