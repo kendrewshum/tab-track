@@ -88,7 +88,7 @@ describe("signup account throttling", () => {
     expect(dependencies.findUserByEmail).not.toHaveBeenCalled();
   });
 
-  it("does not reveal an existing account", async () => {
+  it("does not reveal an existing account and still performs password hashing", async () => {
     const dependencies = createDependencies({
       existingUser: { id: "existing-user" },
     });
@@ -101,7 +101,7 @@ describe("signup account throttling", () => {
     });
 
     expect(dependencies.limiter.succeed).not.toHaveBeenCalled();
-    expect(dependencies.hashPassword).not.toHaveBeenCalled();
+    expect(dependencies.hashPassword).toHaveBeenCalledWith("password123");
     expect(dependencies.createUser).not.toHaveBeenCalled();
   });
 
