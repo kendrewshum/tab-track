@@ -23,6 +23,9 @@ export type ActivityExpense = {
   splitType: ExpenseSnapshot["splitType"];
   date: string;
   createdAt: string;
+  deletedAt?: string | null;
+  deletedByUserId?: string | null;
+  splits?: ExpenseSnapshot["splits"];
 };
 
 export type ActivitySettlement = {
@@ -43,6 +46,15 @@ export type ActivityEvent =
       occurredAt: string;
       expenseId: string;
       expense: ActivityExpense;
+    }
+  | {
+      id: string;
+      type: "expense_deleted";
+      occurredAt: string;
+      expenseId: string;
+      description: string;
+      date: string;
+      deletedByUserId: string | null;
     }
   | {
       id: string;
@@ -73,7 +85,8 @@ export function serializeExpenseSnapshot(snapshot: ExpenseSnapshot): string {
 }
 
 export function parseExpenseSnapshot(serialized: string): ExpenseSnapshot {
-  return JSON.parse(serialized) as ExpenseSnapshot;
+  const snapshot = JSON.parse(serialized) as ExpenseSnapshot;
+  return createExpenseSnapshot(snapshot, snapshot.splits);
 }
 
 export function createExpenseSnapshot(
@@ -81,8 +94,15 @@ export function createExpenseSnapshot(
   splits: ExpenseSnapshot["splits"]
 ): ExpenseSnapshot {
   return {
-    ...expense,
-    splits: splits.map((split) => ({ ...split })),
+    description: expense.description,
+    amount: expense.amount,
+    paidById: expense.paidById,
+    splitType: expense.splitType,
+    date: expense.date,
+    splits: splits.map((split) => ({
+      memberId: split.memberId,
+      amount: split.amount,
+    })),
   };
 }
 
@@ -129,14 +149,82 @@ export function buildActivityEvents({
   revisions: ExpenseRevision[];
   settlements: ActivitySettlement[];
 }): ActivityEvent[] {
+  const revisionsByExpenseId = new Map<string, ExpenseRevision[]>();
+  for (const revision of revisions) {
+    const expenseRevisions = revisionsByExpenseId.get(revision.expenseId) ?? [];
+    expenseRevisions.push(revision);
+    revisionsByExpenseId.set(revision.expenseId, expenseRevisions);
+  }
+
+  const revisionChronologyByExpenseId = new Map<string, ExpenseRevision[]>();
+  const revisionSequenceById = new Map<string, number>();
+  const expensesById = new Map(expenses.map((expense) => [expense.id, expense]));
+  for (const [expenseId, expenseRevisions] of revisionsByExpenseId) {
+    const expense = expensesById.get(expenseId);
+    const currentSnapshot = expense?.splits
+      ? serializeExpenseSnapshot(
+          createExpenseSnapshot(
+            {
+              description: expense.description,
+              amount: expense.amount,
+              paidById: expense.paidById,
+              splitType: expense.splitType,
+              date: expense.date,
+            },
+            expense.splits,
+          ),
+        )
+      : undefined;
+    const chronology = buildRevisionChronology(
+      expenseRevisions,
+      currentSnapshot,
+    );
+    revisionChronologyByExpenseId.set(expenseId, chronology);
+    chronology.forEach((revision, index) => {
+      revisionSequenceById.set(revision.id, index);
+    });
+  }
+
   const events: ActivityEvent[] = [
-    ...expenses.map((expense) => ({
-      id: `expense-created-${expense.id}`,
-      type: "expense_created" as const,
-      occurredAt: expense.createdAt,
-      expenseId: expense.id,
-      expense,
-    })),
+    ...expenses.map((expense) => {
+      const earliestRevision = revisionChronologyByExpenseId.get(expense.id)?.[0];
+      const originalSnapshot = earliestRevision
+        ? parseExpenseSnapshot(earliestRevision.beforeSnapshot)
+        : null;
+
+      return {
+        id: `expense-created-${expense.id}`,
+        type: "expense_created" as const,
+        occurredAt: expense.createdAt,
+        expenseId: expense.id,
+        expense: originalSnapshot
+          ? {
+              ...expense,
+              description: originalSnapshot.description,
+              amount: originalSnapshot.amount,
+              paidById: originalSnapshot.paidById,
+              splitType: originalSnapshot.splitType,
+              date: originalSnapshot.date,
+              splits: originalSnapshot.splits,
+            }
+          : expense,
+      };
+    }),
+    ...expenses.flatMap((expense) =>
+      expense.deletedAt
+        ? [
+            {
+              id: `expense-deleted-${expense.id}`,
+              type: "expense_deleted" as const,
+              occurredAt: expense.deletedAt,
+              expenseId: expense.id,
+              description: expense.description,
+              date: expense.date,
+              deletedByUserId: expense.deletedByUserId ?? null,
+            },
+          ]
+        : []
+    ),
     ...revisions.map((revision) => ({
       id: `expense-edited-${revision.id}`,
       type: "expense_edited" as const,
@@ -165,19 +253,11 @@ export function buildActivityEvents({
     }),
   ];
 
-  return events.sort((a, b) => {
-    const occurredAtDifference = toTimestampMs(b.occurredAt) - toTimestampMs(a.occurredAt);
-    if (occurredAtDifference !== 0) {
-      return occurredAtDifference;
-    }
-
-    const businessDateDifference = toTimestampMs(getActivitySortDate(b)) - toTimestampMs(getActivitySortDate(a));
-    if (businessDateDifference !== 0) {
-      return businessDateDifference;
-    }
-
-    return b.id.localeCompare(a.id);
-  });
+  return sortActivityEvents(
+    events,
+    revisionChronologyByExpenseId,
+    revisionSequenceById
+  );
 }
 
 export function hasExpenseEditsAfterSettlementStarted(
@@ -213,10 +293,250 @@ function getActivitySortDate(event: ActivityEvent): string {
   switch (event.type) {
     case "expense_created":
       return event.expense.date;
+    case "expense_deleted":
+      return event.date;
     case "expense_edited":
       return event.after.date;
     case "settlement_recorded":
     case "settlement_reversed":
       return event.date;
+  }
+}
+
+function snapshotKey(serialized: string): string {
+  const snapshot = parseExpenseSnapshot(serialized);
+  return serializeExpenseSnapshot({
+    ...snapshot,
+    splits: [...snapshot.splits].sort(
+      (a, b) =>
+        a.memberId.localeCompare(b.memberId) || a.amount - b.amount,
+    ),
+  });
+}
+
+function buildRevisionChronology(
+  revisions: ExpenseRevision[],
+  currentSnapshot?: string,
+): ExpenseRevision[] {
+  const fallback = [...revisions].sort(
+    (a, b) =>
+      toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt) ||
+      a.id.localeCompare(b.id)
+  );
+  if (fallback.length < 2) {
+    return fallback;
+  }
+
+  if (currentSnapshot) {
+    const newestFirst: ExpenseRevision[] = [];
+    const visited = new Set<string>();
+    let expectedAfterSnapshot = snapshotKey(currentSnapshot);
+
+    while (newestFirst.length < fallback.length) {
+      const predecessors = fallback.filter(
+        (candidate) =>
+          !visited.has(candidate.id) &&
+          snapshotKey(candidate.afterSnapshot) === expectedAfterSnapshot,
+      );
+      if (predecessors.length !== 1) {
+        break;
+      }
+
+      const predecessor = predecessors[0];
+      newestFirst.push(predecessor);
+      visited.add(predecessor.id);
+      expectedAfterSnapshot = snapshotKey(predecessor.beforeSnapshot);
+    }
+
+    if (newestFirst.length === fallback.length) {
+      return newestFirst.reverse();
+    }
+  }
+
+  const roots = fallback.filter(
+    (candidate) =>
+      !fallback.some(
+        (possiblePredecessor) =>
+          possiblePredecessor.id !== candidate.id &&
+          snapshotKey(possiblePredecessor.afterSnapshot) ===
+            snapshotKey(candidate.beforeSnapshot)
+      )
+  );
+  if (roots.length !== 1) {
+    return fallback;
+  }
+
+  const chronology: ExpenseRevision[] = [];
+  const visited = new Set<string>();
+  let current: ExpenseRevision | undefined = roots[0];
+
+  while (current && !visited.has(current.id)) {
+    chronology.push(current);
+    visited.add(current.id);
+    const currentAfterSnapshot: string = current.afterSnapshot;
+
+    const successors = fallback.filter(
+      (candidate) =>
+        !visited.has(candidate.id) &&
+        snapshotKey(candidate.beforeSnapshot) ===
+          snapshotKey(currentAfterSnapshot)
+    );
+    if (successors.length > 1) {
+      return fallback;
+    }
+    current = successors[0];
+  }
+
+  return chronology.length === fallback.length ? chronology : fallback;
+}
+
+function sortActivityEvents(
+  events: ActivityEvent[],
+  revisionChronologyByExpenseId: Map<string, ExpenseRevision[]>,
+  revisionSequenceById: Map<string, number>
+): ActivityEvent[] {
+  const buckets = new Map<number, ActivityEvent[]>();
+  for (const event of events) {
+    const timestamp = toTimestampMs(event.occurredAt);
+    const bucket = buckets.get(timestamp) ?? [];
+    bucket.push(event);
+    buckets.set(timestamp, bucket);
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => b - a)
+    .flatMap(([, bucket]) =>
+      sortActivityTimestampBucket(
+        bucket,
+        revisionChronologyByExpenseId,
+        revisionSequenceById
+      )
+    );
+}
+
+function sortActivityTimestampBucket(
+  events: ActivityEvent[],
+  revisionChronologyByExpenseId: Map<string, ExpenseRevision[]>,
+  revisionSequenceById: Map<string, number>
+): ActivityEvent[] {
+  const eventsById = new Map(events.map((event) => [event.id, event]));
+  const outgoing = new Map(events.map((event) => [event.id, new Set<string>()]));
+  const indegree = new Map(events.map((event) => [event.id, 0]));
+  const expenseEvents = new Map<string, ExpenseActivityEvent[]>();
+
+  for (const event of events) {
+    if (!isExpenseActivityEvent(event)) {
+      continue;
+    }
+
+    const group = expenseEvents.get(event.expenseId) ?? [];
+    group.push(event);
+    expenseEvents.set(event.expenseId, group);
+  }
+
+  for (const lifecycleEvents of expenseEvents.values()) {
+    const newestFirst = [...lifecycleEvents].sort((a, b) => {
+      const rankDifference =
+        getExpenseLifecycleRank(
+          b,
+          revisionChronologyByExpenseId,
+          revisionSequenceById
+        ) -
+        getExpenseLifecycleRank(
+          a,
+          revisionChronologyByExpenseId,
+          revisionSequenceById
+        );
+      return rankDifference || compareActivityBaseline(a, b);
+    });
+
+    for (let index = 0; index < newestFirst.length - 1; index += 1) {
+      const newer = newestFirst[index];
+      const older = newestFirst[index + 1];
+      const newerRank = getExpenseLifecycleRank(
+        newer,
+        revisionChronologyByExpenseId,
+        revisionSequenceById
+      );
+      const olderRank = getExpenseLifecycleRank(
+        older,
+        revisionChronologyByExpenseId,
+        revisionSequenceById
+      );
+      if (newerRank === olderRank || outgoing.get(newer.id)?.has(older.id)) {
+        continue;
+      }
+
+      outgoing.get(newer.id)?.add(older.id);
+      indegree.set(older.id, (indegree.get(older.id) ?? 0) + 1);
+    }
+  }
+
+  const available = events.filter((event) => indegree.get(event.id) === 0);
+  const sorted: ActivityEvent[] = [];
+
+  while (available.length > 0) {
+    available.sort(compareActivityBaseline);
+    const next = available.shift();
+    if (!next) {
+      break;
+    }
+
+    sorted.push(next);
+    for (const targetId of outgoing.get(next.id) ?? []) {
+      const nextIndegree = (indegree.get(targetId) ?? 0) - 1;
+      indegree.set(targetId, nextIndegree);
+      if (nextIndegree === 0) {
+        const target = eventsById.get(targetId);
+        if (target) {
+          available.push(target);
+        }
+      }
+    }
+  }
+
+  if (sorted.length === events.length) {
+    return sorted;
+  }
+
+  const sortedIds = new Set(sorted.map((event) => event.id));
+  return [
+    ...sorted,
+    ...events
+      .filter((event) => !sortedIds.has(event.id))
+      .sort(compareActivityBaseline),
+  ];
+}
+
+function compareActivityBaseline(a: ActivityEvent, b: ActivityEvent): number {
+  const businessDateDifference =
+    toTimestampMs(getActivitySortDate(b)) -
+    toTimestampMs(getActivitySortDate(a));
+  return businessDateDifference || b.id.localeCompare(a.id);
+}
+
+type ExpenseActivityEvent = Extract<
+  ActivityEvent,
+  { type: "expense_created" | "expense_deleted" | "expense_edited" }
+>;
+
+function isExpenseActivityEvent(
+  event: ActivityEvent
+): event is ExpenseActivityEvent {
+  return "expenseId" in event;
+}
+
+function getExpenseLifecycleRank(
+  event: ExpenseActivityEvent,
+  revisionChronologyByExpenseId: Map<string, ExpenseRevision[]>,
+  revisionSequenceById: Map<string, number>
+): number {
+  switch (event.type) {
+    case "expense_created":
+      return 0;
+    case "expense_edited":
+      return (revisionSequenceById.get(event.revisionId) ?? -1) + 1;
+    case "expense_deleted":
+      return (revisionChronologyByExpenseId.get(event.expenseId)?.length ?? 0) + 1;
   }
 }

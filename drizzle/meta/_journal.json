@@ -43,6 +43,13 @@
       "when": 1785352305141,
       "tag": "0005_serious_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785352785682,
+      "tag": "0006_outgoing_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

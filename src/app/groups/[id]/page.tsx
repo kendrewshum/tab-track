@@ -53,7 +53,7 @@ export default async function GroupPage({
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();
 
-  const [groupMembers, groupExpenses, groupSettlements]: [
+  const [groupMembers, allGroupExpenses, groupSettlements]: [
     MemberRow[],
     ExpenseRow[],
     SettlementRow[],
@@ -84,7 +84,8 @@ export default async function GroupPage({
       )
     : [];
 
-  const expenseIds = groupExpenses.map((expense) => expense.id);
+  const groupExpenses = allGroupExpenses.filter((expense) => expense.deletedAt === null);
+  const expenseIds = allGroupExpenses.map((expense) => expense.id);
   const [groupExpenseSplits, groupExpenseRevisions]: [ExpenseSplitRow[], ExpenseRevisionRow[]] =
     await Promise.all([
     expenseIds.length > 0
@@ -130,7 +131,13 @@ export default async function GroupPage({
     groupSettlements
   );
   const activityEvents = buildActivityEvents({
-    expenses: groupExpenses,
+    expenses: allGroupExpenses.map((expense) => ({
+      ...expense,
+      splits: (splitsByExpenseId.get(expense.id) ?? []).map((split) => ({
+        memberId: split.memberId,
+        amount: split.amount,
+      })),
+    })),
     revisions: groupExpenseRevisions,
     settlements: groupSettlements,
   });
@@ -291,7 +298,7 @@ export default async function GroupPage({
                     </Link>
                     <ConfirmDeleteButton
                       action={deleteExpense.bind(null, id, expense.id)}
-                      message="Delete this expense? This cannot be undone."
+                      message="Delete this expense from the active ledger? Its activity history will be preserved."
                       pendingLabel="Deleting..."
                       className="text-slate-300 hover:text-red-400 transition-colors text-lg leading-none disabled:opacity-70 disabled:cursor-not-allowed"
                       title="Delete expense"
@@ -349,6 +356,13 @@ export default async function GroupPage({
                         ? ` · renamed from ${event.before.description}`
                         : ""}
                     </p>
+                  </>
+                )}
+                {event.type === "expense_deleted" && (
+                  <>
+                    <p className="text-sm font-medium text-slate-900">Expense deleted</p>
+                    <p className="text-sm text-slate-700">{event.description}</p>
+                    <p className="text-xs text-slate-400">{formatDate(event.date)}</p>
                   </>
                 )}
                 {event.type === "settlement_recorded" && (

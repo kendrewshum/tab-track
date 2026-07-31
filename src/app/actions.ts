@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -283,7 +283,11 @@ export async function updateExpense(groupId: string, expenseId: string, formData
 
   const [existingExpense, existingSplits] = await Promise.all([
     db.query.expenses.findFirst({
-      where: and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)),
+      where: and(
+        eq(expenses.id, expenseId),
+        eq(expenses.groupId, groupId),
+        isNull(expenses.deletedAt)
+      ),
     }),
     db.select().from(expenseSplits).where(eq(expenseSplits.expenseId, expenseId)),
   ]);
@@ -306,7 +310,7 @@ export async function updateExpense(groupId: string, expenseId: string, formData
   );
 
   await db.transaction(async (tx) => {
-    await tx
+    const updatedExpenses = await tx
       .update(expenses)
       .set({
         description,
@@ -315,7 +319,18 @@ export async function updateExpense(groupId: string, expenseId: string, formData
         splitType,
         date,
       })
-      .where(eq(expenses.id, expenseId));
+      .where(
+        and(
+          eq(expenses.id, expenseId),
+          eq(expenses.groupId, groupId),
+          isNull(expenses.deletedAt)
+        )
+      )
+      .returning({ id: expenses.id });
+
+    if (updatedExpenses.length === 0) {
+      return;
+    }
 
     await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
 
@@ -334,8 +349,20 @@ export async function updateExpense(groupId: string, expenseId: string, formData
 }
 
 export async function deleteExpense(groupId: string, expenseId: string) {
-  await requireGroupAccess(groupId);
-  await db.delete(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)));
+  const { user } = await requireGroupAccess(groupId);
+  await db
+    .update(expenses)
+    .set({
+      deletedAt: sql`datetime('now')`,
+      deletedByUserId: user.id,
+    })
+    .where(
+      and(
+        eq(expenses.id, expenseId),
+        eq(expenses.groupId, groupId),
+        isNull(expenses.deletedAt)
+      )
+    );
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
 }

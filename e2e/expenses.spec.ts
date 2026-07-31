@@ -204,17 +204,42 @@ test.describe("Adding expenses – equal split", () => {
     await expect(page.getByText("Invalid Percentage", { exact: true })).toHaveCount(0);
   });
 
-  test("can delete an expense and balances reset to zero", async ({ page }) => {
+  test("deleting preserves expense history while removing it from the active ledger", async ({
+    page,
+  }) => {
     const id = await createTestGroup(page, "E2E Delete", ["Alice", "Bob"]);
     await fillExpenseBase(page, id, { description: "Coffee", amount: "5", paidBy: "Alice" });
     await page.getByRole("button", { name: "Add Expense" }).click();
 
-    // Accept the confirmation dialog that appears before deletion
+    await expect(page.getByText("+$2.50")).toBeVisible();
+    await page.locator("a[title='Edit expense']").click();
+    await page.waitForURL(/\/expenses\/[^/]+\/edit$/);
+    const editUrl = page.url();
+    await page.getByPlaceholder("e.g. Dinner, Hotel, Uber").fill("Coffee + tip");
+    await page.getByPlaceholder("0.00").fill("6");
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await expect(page.getByText("+$3.00")).toBeVisible();
+
     page.on("dialog", (dialog) => dialog.accept());
     await page.locator("button[title='Delete expense']").click();
 
-    // No expenses left — expense list shows empty state
-    await expect(page.getByText("No expenses yet")).toBeVisible();
+    const expensesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Expenses" }) });
+    await expect(expensesSection.getByText("No expenses yet")).toBeVisible();
+    await expect(expensesSection.getByText("Coffee + tip", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("settled up", { exact: true })).toHaveCount(2);
+    await expect(page.getByRole("link", { name: "Settle up" })).toHaveCount(0);
+
+    const activitySection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Activity" }) });
+    await expect(activitySection.getByText("Expense deleted")).toBeVisible();
+    await expect(activitySection.getByText("Expense edited")).toBeVisible();
+    await expect(activitySection.getByText("Expense added: Coffee")).toBeVisible();
+
+    await page.goto(editUrl);
+    await expect(page.getByText("404")).toBeVisible();
   });
 });
 
