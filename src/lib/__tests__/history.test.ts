@@ -134,6 +134,76 @@ describe("buildActivityEvents", () => {
     });
   });
 
+  it("anchors same-second edit-and-revert cycles to the current expense state", () => {
+    const original = serializeExpenseSnapshot({
+      description: "Dinner",
+      amount: 40,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-20",
+      splits: [
+        { memberId: "alice", amount: 20 },
+        { memberId: "bob", amount: 20 },
+      ],
+    });
+    const edited = serializeExpenseSnapshot({
+      description: "Dinner + drinks",
+      amount: 50,
+      paidById: "alice",
+      splitType: "equal",
+      date: "2026-04-20",
+      splits: [
+        { memberId: "alice", amount: 25 },
+        { memberId: "bob", amount: 25 },
+      ],
+    });
+
+    const events = buildActivityEvents({
+      expenses: [
+        {
+          id: "expense-1",
+          description: "Dinner",
+          amount: 40,
+          paidById: "alice",
+          splitType: "equal",
+          date: "2026-04-20",
+          createdAt: "2026-04-20 09:00:00",
+          splits: parseExpenseSnapshot(original).splits,
+        },
+      ],
+      revisions: [
+        {
+          id: "revision-a-second",
+          expenseId: "expense-1",
+          beforeSnapshot: edited,
+          afterSnapshot: original,
+          createdAt: "2026-04-21 12:00:00",
+        },
+        {
+          id: "revision-z-first",
+          expenseId: "expense-1",
+          beforeSnapshot: original,
+          afterSnapshot: edited,
+          createdAt: "2026-04-21 12:00:00",
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(
+      events
+        .filter((event) => event.type === "expense_edited")
+        .map((event) => event.revisionId),
+    ).toEqual(["revision-a-second", "revision-z-first"]);
+    expect(events.at(-1)).toMatchObject({
+      type: "expense_created",
+      expense: {
+        description: "Dinner",
+        amount: 40,
+      },
+    });
+  });
+
   it("uses a total order when lifecycle and cross-expense baseline priorities form a comparator cycle", () => {
     const original = serializeExpenseSnapshot({
       description: "Dinner",

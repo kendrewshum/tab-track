@@ -25,6 +25,7 @@ export type ActivityExpense = {
   createdAt: string;
   deletedAt?: string | null;
   deletedByUserId?: string | null;
+  splits?: ExpenseSnapshot["splits"];
 };
 
 export type ActivitySettlement = {
@@ -149,8 +150,27 @@ export function buildActivityEvents({
 
   const revisionChronologyByExpenseId = new Map<string, ExpenseRevision[]>();
   const revisionSequenceById = new Map<string, number>();
+  const expensesById = new Map(expenses.map((expense) => [expense.id, expense]));
   for (const [expenseId, expenseRevisions] of revisionsByExpenseId) {
-    const chronology = buildRevisionChronology(expenseRevisions);
+    const expense = expensesById.get(expenseId);
+    const currentSnapshot = expense?.splits
+      ? serializeExpenseSnapshot(
+          createExpenseSnapshot(
+            {
+              description: expense.description,
+              amount: expense.amount,
+              paidById: expense.paidById,
+              splitType: expense.splitType,
+              date: expense.date,
+            },
+            expense.splits,
+          ),
+        )
+      : undefined;
+    const chronology = buildRevisionChronology(
+      expenseRevisions,
+      currentSnapshot,
+    );
     revisionChronologyByExpenseId.set(expenseId, chronology);
     chronology.forEach((revision, index) => {
       revisionSequenceById.set(revision.id, index);
@@ -274,7 +294,21 @@ function getActivitySortDate(event: ActivityEvent): string {
   }
 }
 
-function buildRevisionChronology(revisions: ExpenseRevision[]): ExpenseRevision[] {
+function snapshotKey(serialized: string): string {
+  const snapshot = parseExpenseSnapshot(serialized);
+  return serializeExpenseSnapshot({
+    ...snapshot,
+    splits: [...snapshot.splits].sort(
+      (a, b) =>
+        a.memberId.localeCompare(b.memberId) || a.amount - b.amount,
+    ),
+  });
+}
+
+function buildRevisionChronology(
+  revisions: ExpenseRevision[],
+  currentSnapshot?: string,
+): ExpenseRevision[] {
   const fallback = [...revisions].sort(
     (a, b) =>
       toTimestampMs(a.createdAt) - toTimestampMs(b.createdAt) ||
@@ -284,12 +318,39 @@ function buildRevisionChronology(revisions: ExpenseRevision[]): ExpenseRevision[
     return fallback;
   }
 
+  if (currentSnapshot) {
+    const newestFirst: ExpenseRevision[] = [];
+    const visited = new Set<string>();
+    let expectedAfterSnapshot = snapshotKey(currentSnapshot);
+
+    while (newestFirst.length < fallback.length) {
+      const predecessors = fallback.filter(
+        (candidate) =>
+          !visited.has(candidate.id) &&
+          snapshotKey(candidate.afterSnapshot) === expectedAfterSnapshot,
+      );
+      if (predecessors.length !== 1) {
+        break;
+      }
+
+      const predecessor = predecessors[0];
+      newestFirst.push(predecessor);
+      visited.add(predecessor.id);
+      expectedAfterSnapshot = snapshotKey(predecessor.beforeSnapshot);
+    }
+
+    if (newestFirst.length === fallback.length) {
+      return newestFirst.reverse();
+    }
+  }
+
   const roots = fallback.filter(
     (candidate) =>
       !fallback.some(
         (possiblePredecessor) =>
           possiblePredecessor.id !== candidate.id &&
-          possiblePredecessor.afterSnapshot === candidate.beforeSnapshot
+          snapshotKey(possiblePredecessor.afterSnapshot) ===
+            snapshotKey(candidate.beforeSnapshot)
       )
   );
   if (roots.length !== 1) {
@@ -307,7 +368,8 @@ function buildRevisionChronology(revisions: ExpenseRevision[]): ExpenseRevision[
     const successors = fallback.filter(
       (candidate) =>
         !visited.has(candidate.id) &&
-        candidate.beforeSnapshot === current?.afterSnapshot
+        snapshotKey(candidate.beforeSnapshot) ===
+          snapshotKey(current?.afterSnapshot ?? "")
     );
     if (successors.length > 1) {
       return fallback;

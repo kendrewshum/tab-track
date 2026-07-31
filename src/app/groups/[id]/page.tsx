@@ -131,7 +131,13 @@ export default async function GroupPage({
     groupSettlements
   );
   const activityEvents = buildActivityEvents({
-    expenses: allGroupExpenses,
+    expenses: allGroupExpenses.map((expense) => ({
+      ...expense,
+      splits: (splitsByExpenseId.get(expense.id) ?? []).map((split) => ({
+        memberId: split.memberId,
+        amount: split.amount,
+      })),
+    })),
     revisions: groupExpenseRevisions,
     settlements: groupSettlements,
   });
