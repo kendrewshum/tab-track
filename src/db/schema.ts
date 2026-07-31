@@ -104,6 +104,9 @@ export const groupInvitations = sqliteTable(
       onDelete: "set null",
     }),
     cancelledAt: integer("cancelled_at"),
+    cancelledByUserId: text("cancelled_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },

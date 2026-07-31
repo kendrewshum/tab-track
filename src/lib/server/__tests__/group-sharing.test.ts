@@ -134,6 +134,7 @@ describe("shareGroup", () => {
       claimedAt: 123,
       claimedByUserId: "registered",
       cancelledAt: 456,
+      cancelledByUserId: "registered",
     });
 
     await expect(
@@ -158,6 +159,7 @@ describe("shareGroup", () => {
         claimedAt: null,
         claimedByUserId: null,
         cancelledAt: null,
+        cancelledByUserId: null,
         createdAt: now,
         updatedAt: now + 1,
       }),
@@ -412,6 +414,7 @@ describe("shareGroup", () => {
       claimedAt: 12,
       claimedByUserId: "registered",
       cancelledAt: 34,
+      cancelledByUserId: null,
       createdAt: now,
       updatedAt: now,
     };

@@ -18,6 +18,7 @@ import {
   users,
 } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
+import { getAccessManagementStatus } from "@/lib/access-management-status";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { buildPendingInvitationRows } from "@/lib/group-invitations";
 import { buildAccountMemberLinkRows } from "@/lib/member-account-links";
@@ -35,6 +36,8 @@ import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
 import { InviteUserForm } from "./invite-user-form";
 import { MemberAccountLinkForm } from "./member-account-link-form";
+import { AccessManagementAction } from "./access-management-action";
+import { AccessManagementStatus } from "./access-management-status";
 
 type MemberRow = typeof members.$inferSelect;
 type ExpenseRow = typeof expenses.$inferSelect;
@@ -47,11 +50,17 @@ export default async function GroupPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ activity?: string | string[] }>;
+  searchParams: Promise<{
+    activity?: string | string[];
+    accessManagement?: string | string[];
+  }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const { access } = await requireGroupAccess(id);
   const canManageGroup = access.role === "owner";
+  const accessManagementStatus = getAccessManagementStatus(
+    resolvedSearchParams.accessManagement,
+  );
 
   const group = await db.query.groups.findFirst({ where: eq(groups.id, id) });
   if (!group) notFound();
@@ -494,6 +503,7 @@ export default async function GroupPage({
       {canManageGroup && (
         <section>
           <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
+          <AccessManagementStatus message={accessManagementStatus ?? null} />
           <div className="bg-white border border-slate-200 rounded-xl p-4">
             <p className="text-sm text-slate-500 mb-3">
               Registered accounts receive access immediately. Everyone else receives an
@@ -506,7 +516,7 @@ export default async function GroupPage({
                 {accountMemberLinkRows.map((account) => (
                   <div
                     key={account.accessId}
-                    className="rounded-lg border border-slate-200 p-3"
+                    className="min-w-0 rounded-lg border border-slate-200 p-3"
                   >
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <p className="min-w-0 break-words text-sm font-medium text-slate-800">
@@ -522,6 +532,16 @@ export default async function GroupPage({
                       memberId={account.memberId}
                       choices={account.choices}
                     />
+                    {account.role === "member" ? (
+                      <div className="mt-3">
+                        <AccessManagementAction
+                          kind="revoke"
+                          groupId={id}
+                          targetId={account.accessId}
+                          email={account.email}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -534,7 +554,7 @@ export default async function GroupPage({
                     {pendingInvitationRows.map((invitation) => (
                       <div
                         key={invitation.id}
-                        className="rounded-lg border border-slate-200 p-3"
+                        className="min-w-0 rounded-lg border border-slate-200 p-3"
                       >
                         <p className="break-words text-sm font-medium text-slate-800">
                           {invitation.email}
@@ -552,6 +572,14 @@ export default async function GroupPage({
                             {formatPendingInvitationExpiry(invitation.expiresAt)}
                           </time>
                         </p>
+                        <div className="mt-3">
+                          <AccessManagementAction
+                            kind="cancel"
+                            groupId={id}
+                            targetId={invitation.id}
+                            email={invitation.email}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
