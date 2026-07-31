@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createClient } from "@libsql/client";
@@ -44,5 +44,37 @@ describe("common query indexes", () => {
         `${indexName} column order`,
       ).toEqual(expectedColumns);
     }
+  });
+
+  it("keeps the latest migration snapshot aligned with the member indexes", () => {
+    const journal = JSON.parse(
+      readFileSync(
+        path.resolve(process.cwd(), "drizzle/meta/_journal.json"),
+        "utf8",
+      ),
+    ) as { entries: Array<{ idx: number }> };
+    const latestIndex = journal.entries.at(-1)?.idx;
+    expect(latestIndex).toBeTypeOf("number");
+
+    const snapshot = JSON.parse(
+      readFileSync(
+        path.resolve(
+          process.cwd(),
+          `drizzle/meta/${String(latestIndex).padStart(4, "0")}_snapshot.json`,
+        ),
+        "utf8",
+      ),
+    ) as {
+      tables: {
+        members: { indexes: Record<string, unknown> };
+      };
+    };
+
+    expect(snapshot.tables.members.indexes).not.toHaveProperty(
+      "members_group_id_idx",
+    );
+    expect(snapshot.tables.members.indexes).toHaveProperty(
+      "members_group_user_unique",
+    );
   });
 });
