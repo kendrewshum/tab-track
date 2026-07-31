@@ -2,7 +2,8 @@
 
 TabTrack deploys on Vercel and stores hosted data in Turso. Database
 migrations are an explicit operator action: application builds never change
-the database schema.
+the database schema, except for the guarded one-time baseline adoption step
+described in "One-time production baseline adoption" below.
 
 ## Environments
 
@@ -109,6 +110,65 @@ Use Preview first:
 
 `npm run db:push` remains available only for deliberate local schema
 prototyping. It is not a deployment command.
+
+## One-time production baseline adoption
+
+Production predates the migration ledger: it was built by `db:push` and sits at
+the `0003` schema with no `__drizzle_migrations` table. `node scripts/db/cli.mjs`
+runs at the start of every Vercel build and adopts that schema as `0003` before
+applying `0004`-`0009`.
+
+It is inert unless **both** hold:
+
+- `VERCEL_ENV=production`
+- `DB_ADOPT_BASELINE=0003`
+
+It compares the live schema against the committed migrations before writing
+anything and refuses, failing the build, on any mismatch.
+
+### Procedure
+
+1. Take a backup and record the UTC timestamp. Turso PITR is always on;
+   retention is 24 hours on Free, longer on paid plans. A PITR restore creates a
+   *new* database, so recovery also means repointing `TURSO_DATABASE_URL`.
+2. Verify out of band that the Production database schema matches the expected
+   baseline. The test suite validates against a reconstructed schema from the
+   committed migrations, not a live sample. In a trusted environment with
+   Production Turso credentials loaded, run:
+
+   ```bash
+   node --input-type=module -e '
+   import { createClient } from "@libsql/client";
+   import { readMigrations, buildExpectedFingerprint, BASELINE_MILLIS } from "./scripts/db/state.mjs";
+   import { buildFingerprint, diffFingerprints } from "./scripts/db/fingerprint.mjs";
+   const client = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
+   try {
+     const migrations = readMigrations();
+     const expected = await buildExpectedFingerprint(migrations, BASELINE_MILLIS);
+     const actual = await buildFingerprint(client);
+     const differences = diffFingerprints(expected, actual);
+     if (differences.length === 0) console.log("✓ Schema matches baseline");
+     else { console.log("Schema mismatches:"); differences.forEach(d => console.log("  " + d)); process.exit(1); }
+   } finally { client.close(); }
+   '
+   ```
+
+   Expect "Schema matches baseline" or a diff output. The guarded run will refuse
+   and fail the build on any mismatch, but discovering it beforehand prevents a
+   production deployment failure.
+3. Merge the change to `main`. It stays inert without the environment variable.
+4. Add `DB_ADOPT_BASELINE=0003` to the Vercel **Production** environment.
+5. Trigger a Production deployment. While an Instant Rollback is active the new
+   build does not take traffic.
+6. Read the build log: expect `adopting baseline`, then `complete and verified`.
+7. Smoke-test login on the deployment URL.
+8. Promote the deployment / undo the rollback.
+9. Remove `DB_ADOPT_BASELINE` immediately.
+
+After step 9, the script is a permanent no-op again: it only acts when both
+`VERCEL_ENV=production` and `DB_ADOPT_BASELINE=0003` are set, and the latter
+is now removed. Applying future migrations to Production goes back to being
+a manual `npm run db:migrate` action, as described above.
 
 ## Rollback and recovery
 

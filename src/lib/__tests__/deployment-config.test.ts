@@ -33,7 +33,7 @@ describe("deployment configuration", () => {
   it("keeps the Vercel build command schema-safe", () => {
     const vercelJson = readJson<VercelJson>("vercel.json");
 
-    expect(vercelJson.buildCommand).toBe("npm run build");
+    expect(vercelJson.buildCommand).toBe("node scripts/db/cli.mjs && npm run build");
     expect(vercelJson.buildCommand).not.toContain("db:push");
   });
 
