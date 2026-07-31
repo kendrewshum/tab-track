@@ -57,61 +57,89 @@ export const groupAccess = sqliteTable(
       table.groupId,
       table.userId
     ),
+    userIdIdx: index("group_access_user_id_idx").on(table.userId),
   })
 );
 
-export const members = sqliteTable("members", {
-  id: text("id").primaryKey(),
-  groupId: text("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-});
+export const members = sqliteTable(
+  "members",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    groupIdIdx: index("members_group_id_idx").on(table.groupId),
+  })
+);
 
-export const expenses = sqliteTable("expenses", {
-  id: text("id").primaryKey(),
-  groupId: text("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  description: text("description").notNull(),
-  amount: real("amount").notNull(),
-  paidById: text("paid_by_id")
-    .notNull()
-    .references(() => members.id),
-  splitType: text("split_type", {
-    enum: ["equal", "shares", "percentage", "exact"],
-  }).notNull(),
-  date: text("date").notNull(),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-});
+export const expenses = sqliteTable(
+  "expenses",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    amount: real("amount").notNull(),
+    paidById: text("paid_by_id")
+      .notNull()
+      .references(() => members.id),
+    splitType: text("split_type", {
+      enum: ["equal", "shares", "percentage", "exact"],
+    }).notNull(),
+    date: text("date").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    groupIdDateIdx: index("expenses_group_id_date_idx").on(
+      table.groupId,
+      table.date
+    ),
+  })
+);
 
-export const expenseSplits = sqliteTable("expense_splits", {
-  id: text("id").primaryKey(),
-  expenseId: text("expense_id")
-    .notNull()
-    .references(() => expenses.id, { onDelete: "cascade" }),
-  memberId: text("member_id")
-    .notNull()
-    .references(() => members.id),
-  amount: real("amount").notNull(),
-});
+export const expenseSplits = sqliteTable(
+  "expense_splits",
+  {
+    id: text("id").primaryKey(),
+    expenseId: text("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id),
+    amount: real("amount").notNull(),
+  },
+  (table) => ({
+    expenseIdIdx: index("expense_splits_expense_id_idx").on(table.expenseId),
+  })
+);
 
-export const expenseRevisions = sqliteTable("expense_revisions", {
-  id: text("id").primaryKey(),
-  expenseId: text("expense_id")
-    .notNull()
-    .references(() => expenses.id, { onDelete: "cascade" }),
-  beforeSnapshot: text("before_snapshot").notNull(),
-  afterSnapshot: text("after_snapshot").notNull(),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-});
+export const expenseRevisions = sqliteTable(
+  "expense_revisions",
+  {
+    id: text("id").primaryKey(),
+    expenseId: text("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    beforeSnapshot: text("before_snapshot").notNull(),
+    afterSnapshot: text("after_snapshot").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    expenseIdIdx: index("expense_revisions_expense_id_idx").on(table.expenseId),
+  })
+);
 
 export const settlements = sqliteTable(
   "settlements",
@@ -139,6 +167,10 @@ export const settlements = sqliteTable(
       columns: [table.reversalOfSettlementId],
       foreignColumns: [table.id],
     }),
+    index("settlements_group_id_date_idx").on(table.groupId, table.date),
+    index("settlements_reversal_of_settlement_id_idx").on(
+      table.reversalOfSettlementId
+    ),
   ]
 );
 
