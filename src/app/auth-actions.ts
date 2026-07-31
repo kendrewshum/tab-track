@@ -8,9 +8,12 @@ import { db } from "@/db";
 import { groupAccess } from "@/db/schema";
 import { getAuthConfigError, isAuthSecretConfigured } from "@/lib/auth-config";
 import { hashPassword } from "@/lib/password";
+import { createAuthAttemptStore } from "@/lib/server/auth-attempt-store";
+import { createAuthRateLimiter } from "@/lib/server/auth-rate-limit";
+import { getTrustedRequestSource } from "@/lib/server/auth-request-source";
 import { requireGroupOwner } from "@/lib/server/session";
+import { createSignupAccountAttempt } from "@/lib/server/signup-account";
 import { createUser, findUserByEmail } from "@/lib/server/users";
-import { validateSignupInput } from "@/lib/signup";
 import { generateId } from "@/lib/utils";
 
 export type AuthFormState = {
@@ -21,6 +24,9 @@ export type InviteFormState = {
   error?: string;
   success?: string;
 };
+
+const LOGIN_UNAVAILABLE_MESSAGE =
+  "That email and password do not match, or too many attempts were made. Try again later.";
 
 export async function loginAction(
   _previousState: AuthFormState,
@@ -45,7 +51,7 @@ export async function loginAction(
     });
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "That email and password do not match." };
+      return { error: LOGIN_UNAVAILABLE_MESSAGE };
     }
 
     throw error;
@@ -66,31 +72,34 @@ export async function signupAction(
     return { error: configError };
   }
 
-  const result = validateSignupInput(
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    return { error: "Authentication is not configured yet. Add AUTH_SECRET in Vercel." };
+  }
+
+  const result = await createSignupAccountAttempt(
     {
       email: String(formData.get("email") ?? ""),
       displayName: String(formData.get("displayName") ?? ""),
       password: String(formData.get("password") ?? ""),
       inviteCode: String(formData.get("inviteCode") ?? ""),
+      expectedInviteCode: process.env.APP_INVITE_CODE,
+      source: await getTrustedRequestSource(),
     },
-    process.env.APP_INVITE_CODE
+    {
+      limiter: createAuthRateLimiter({
+        store: createAuthAttemptStore(db),
+        secret,
+      }),
+      findUserByEmail,
+      hashPassword,
+      createUser,
+    },
   );
 
   if (!result.success) {
     return { error: result.message };
   }
-
-  const existingUser = await findUserByEmail(result.data.email);
-  if (existingUser) {
-    return { error: "An account with that email already exists." };
-  }
-
-  const passwordHash = await hashPassword(result.data.password);
-  await createUser({
-    email: result.data.email,
-    displayName: result.data.displayName,
-    passwordHash,
-  });
 
   try {
     await signIn("credentials", {

@@ -1,6 +1,11 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
+import { db } from "@/db";
+import { createAuthAttemptStore } from "@/lib/server/auth-attempt-store";
+import { createAuthRateLimiter } from "@/lib/server/auth-rate-limit";
+import { getTrustedRequestSource } from "@/lib/server/auth-request-source";
+import { authorizeCredentialsAttempt } from "@/lib/server/credentials-authorize";
 import { verifyPassword } from "@/lib/password";
 import { findUserByEmail, syncLegacyGroupAccessForAppUser } from "@/lib/server/users";
 
@@ -20,33 +25,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email =
-          typeof credentials?.email === "string"
-            ? credentials.email.trim().toLowerCase()
-            : "";
-        const password = typeof credentials?.password === "string" ? credentials.password : "";
-
-        if (!email || !password) {
+        const secret = process.env.AUTH_SECRET;
+        if (!secret) {
           return null;
         }
 
-        const user = await findUserByEmail(email);
-        if (!user) {
-          return null;
-        }
-
-        const passwordMatches = await verifyPassword(password, user.passwordHash);
-        if (!passwordMatches) {
-          return null;
-        }
-
-        await syncLegacyGroupAccessForAppUser({ id: user.id, email: user.email });
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.displayName,
-        };
+        return authorizeCredentialsAttempt(
+          {
+            credentials,
+            source: await getTrustedRequestSource(),
+          },
+          {
+            limiter: createAuthRateLimiter({
+              store: createAuthAttemptStore(db),
+              secret,
+            }),
+            findUserByEmail,
+            verifyPassword,
+            syncLegacyAccess: syncLegacyGroupAccessForAppUser,
+          },
+        );
       },
     }),
   ],
