@@ -43,26 +43,26 @@ describe("expense snapshot serialization", () => {
   });
 
   it("projects database rows to domain-only expense snapshot fields", () => {
-    const snapshot = createExpenseSnapshot(
+    const expenseRow = {
+      id: "expense-1",
+      groupId: "group-1",
+      description: "Brunch",
+      amount: 18,
+      paidById: "alice",
+      splitType: "equal" as const,
+      date: "2026-04-26",
+      createdAt: "2026-04-26 09:00:00",
+    };
+    const splitRows = [
       {
-        id: "expense-1",
-        groupId: "group-1",
-        description: "Brunch",
+        id: "split-1",
+        expenseId: "expense-1",
+        memberId: "alice",
         amount: 18,
-        paidById: "alice",
-        splitType: "equal" as const,
-        date: "2026-04-26",
-        createdAt: "2026-04-26 09:00:00",
       },
-      [
-        {
-          id: "split-1",
-          expenseId: "expense-1",
-          memberId: "alice",
-          amount: 18,
-        },
-      ],
-    );
+    ];
+
+    const snapshot = createExpenseSnapshot(expenseRow, splitRows);
 
     expect(snapshot).toEqual({
       description: "Brunch",
