@@ -15,6 +15,11 @@ local.db
 local.db-shm
 local.db-wal
 
+# production database backups - contain real emails and password hashes
+tabtrack.db
+tabtrack.db-shm
+tabtrack.db-wal
+
 
 # playwright
 playwright-report/
