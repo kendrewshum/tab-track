@@ -37,6 +37,7 @@ import { ConfirmDeleteButton } from "./confirm-delete-button";
 import { InviteUserForm } from "./invite-user-form";
 import { MemberAccountLinkForm } from "./member-account-link-form";
 import { AccessManagementAction } from "./access-management-action";
+import { AccessManagementStatus } from "./access-management-status";
 
 type MemberRow = typeof members.$inferSelect;
 type ExpenseRow = typeof expenses.$inferSelect;
@@ -496,15 +497,7 @@ export default async function GroupPage({
       {canManageGroup && (
         <section>
           <h2 className="font-semibold text-slate-900 mb-3">App Access</h2>
-          {accessManagementStatus ? (
-            <p
-              className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
-              role="status"
-              aria-live="polite"
-            >
-              {accessManagementStatus}
-            </p>
-          ) : null}
+          <AccessManagementStatus message={accessManagementStatus ?? null} />
           <div className="bg-white border border-slate-200 rounded-xl p-4">
             <p className="text-sm text-slate-500 mb-3">
               Registered accounts receive access immediately. Everyone else receives an

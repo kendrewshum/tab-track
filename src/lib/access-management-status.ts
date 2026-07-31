@@ -14,3 +14,15 @@ export function getAccessManagementStatus(
       return undefined;
   }
 }
+
+export function getUrlWithoutAccessManagementStatus(
+  currentUrl: string,
+): string | undefined {
+  const url = new URL(currentUrl);
+  if (!url.searchParams.has("accessManagement")) {
+    return undefined;
+  }
+
+  url.searchParams.delete("accessManagement");
+  return `${url.pathname}${url.search}${url.hash}`;
+}
