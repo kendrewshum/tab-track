@@ -18,7 +18,7 @@ import {
 } from "@/db/schema";
 import { calculateBalances, simplifyDebts } from "@/lib/balances";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { buildGroupShareList } from "@/lib/group-shares";
+import { buildAccountMemberLinkRows } from "@/lib/member-account-links";
 import { requireGroupAccess } from "@/lib/server/session";
 import {
   buildActivityArchive,
@@ -32,6 +32,7 @@ import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
 import { InviteUserForm } from "./invite-user-form";
+import { MemberAccountLinkForm } from "./member-account-link-form";
 
 type MemberRow = typeof members.$inferSelect;
 type ExpenseRow = typeof expenses.$inferSelect;
@@ -66,21 +67,19 @@ export default async function GroupPage({
       .orderBy(expenses.date),
     db.select().from(settlements).where(eq(settlements.groupId, id)),
   ]);
-  const sharedUsers = canManageGroup
-    ? buildGroupShareList(
-        (
-          await db
-            .select({
-              email: users.email,
-              role: groupAccess.role,
-            })
-            .from(groupAccess)
-            .innerJoin(users, eq(groupAccess.userId, users.id))
-            .where(eq(groupAccess.groupId, id))
-        ).map((share) => ({
-          email: share.email,
-          role: share.role,
-        }))
+  const accountMemberLinkRows = canManageGroup
+    ? buildAccountMemberLinkRows(
+        await db
+          .select({
+            accessId: groupAccess.id,
+            userId: groupAccess.userId,
+            email: users.email,
+            role: groupAccess.role,
+          })
+          .from(groupAccess)
+          .innerJoin(users, eq(groupAccess.userId, users.id))
+          .where(eq(groupAccess.groupId, id)),
+        groupMembers
       )
     : [];
 
@@ -450,12 +449,28 @@ export default async function GroupPage({
             </p>
             <InviteUserForm groupId={id} />
             <div className="mt-4 border-t border-slate-100 pt-4">
-              <h3 className="text-sm font-medium text-slate-900">Shared with</h3>
-              <div className="mt-2 space-y-2">
-                {sharedUsers.map((sharedUser) => (
-                  <p key={sharedUser.email} className="text-sm text-slate-600">
-                    {sharedUser.email}
-                  </p>
+              <h3 className="text-sm font-medium text-slate-900">Accounts</h3>
+              <div className="mt-3 space-y-3">
+                {accountMemberLinkRows.map((account) => (
+                  <div
+                    key={account.accessId}
+                    className="rounded-lg border border-slate-200 p-3"
+                  >
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 break-words text-sm font-medium text-slate-800">
+                        {account.email}
+                      </p>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        {account.role === "owner" ? "Owner" : "Member"}
+                      </span>
+                    </div>
+                    <MemberAccountLinkForm
+                      groupId={id}
+                      accessId={account.accessId}
+                      memberId={account.memberId}
+                      choices={account.choices}
+                    />
+                  </div>
                 ))}
               </div>
             </div>

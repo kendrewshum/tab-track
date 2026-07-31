@@ -68,13 +68,19 @@ export const members = sqliteTable(
     groupId: text("group_id")
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     name: text("name").notNull(),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),
   },
   (table) => ({
-    groupIdIdx: index("members_group_id_idx").on(table.groupId),
+    groupUserUniqueIndex: uniqueIndex("members_group_user_unique").on(
+      table.groupId,
+      table.userId
+    ),
   })
 );
 
