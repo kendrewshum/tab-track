@@ -23,7 +23,7 @@ import {
   readSubmissionToken,
   type CreateActionKind,
 } from "@/lib/idempotency";
-import { computeSplits, type SplitInputs, type SplitType } from "@/lib/splits";
+import { parseExpenseForm, parseSettlementForm } from "@/lib/form-parsing";
 import { generateId } from "@/lib/utils";
 import { areGroupMemberIds } from "@/lib/group-member-ids";
 
@@ -208,49 +208,20 @@ export async function addMember(groupId: string, formData: FormData) {
 
 export async function createExpense(groupId: string, formData: FormData) {
   const { user } = await requireGroupAccess(groupId);
-  const description = (formData.get("description") as string).trim();
-  const amount = parseFloat(formData.get("amount") as string);
-  const paidById = formData.get("paidById") as string;
-  const splitType = formData.get("splitType") as SplitType;
-  const date = formData.get("date") as string;
-  const participantIds = formData.getAll("participants") as string[];
+  const parsedExpense = parseExpenseForm(formData);
   const actionKind = "createExpense" as const;
   const submissionToken = readSubmissionToken(formData);
 
-  if (
-    !description ||
-    isNaN(amount) ||
-    amount <= 0 ||
-    !paidById ||
-    !date ||
-    participantIds.length === 0
-  )
-    return;
+  if (!parsedExpense.ok) return;
+  const { description, amount, paidById, splitType, date, participantIds, splits } =
+    parsedExpense.value;
 
   const groupMemberIds = await getGroupMemberIdSet(groupId);
   if (!areExpenseMemberReferencesValid(groupMemberIds, paidById, participantIds)) {
     return;
   }
 
-  // Extract per-participant values from FormData into a plain object so the
-  // pure computeSplits function doesn't depend on browser APIs.
-  const inputs: SplitInputs = {
-    shares: Object.fromEntries(
-      participantIds.map((id) => [id, parseFloat(formData.get(`share_${id}`) as string) || 0])
-    ),
-    percentages: Object.fromEntries(
-      participantIds.map((id) => [id, parseFloat(formData.get(`pct_${id}`) as string) || 0])
-    ),
-    exact: Object.fromEntries(
-      participantIds.map((id) => [id, parseFloat(formData.get(`exact_${id}`) as string) || 0])
-    ),
-  };
-
-  const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs, paidById);
-  if (splits.length === 0) return;
-
   const expenseId = generateId();
-  const roundedAmount = Math.round(amount * 100) / 100;
   const redirectPath = buildCreateRedirectPath(actionKind, { groupId });
 
   if (submissionToken && (await replayExistingCreateAction(user.id, actionKind, submissionToken))) {
@@ -263,7 +234,7 @@ export async function createExpense(groupId: string, formData: FormData) {
         id: expenseId,
         groupId,
         description,
-        amount: roundedAmount,
+        amount,
         paidById,
         splitType,
         date,
@@ -300,42 +271,15 @@ export async function createExpense(groupId: string, formData: FormData) {
 
 export async function updateExpense(groupId: string, expenseId: string, formData: FormData) {
   await requireGroupAccess(groupId);
-  const description = (formData.get("description") as string).trim();
-  const amount = parseFloat(formData.get("amount") as string);
-  const paidById = formData.get("paidById") as string;
-  const splitType = formData.get("splitType") as SplitType;
-  const date = formData.get("date") as string;
-  const participantIds = formData.getAll("participants") as string[];
-
-  if (
-    !description ||
-    isNaN(amount) ||
-    amount <= 0 ||
-    !paidById ||
-    !date ||
-    participantIds.length === 0
-  )
-    return;
+  const parsedExpense = parseExpenseForm(formData);
+  if (!parsedExpense.ok) return;
+  const { description, amount, paidById, splitType, date, participantIds, splits } =
+    parsedExpense.value;
 
   const groupMemberIds = await getGroupMemberIdSet(groupId);
   if (!areExpenseMemberReferencesValid(groupMemberIds, paidById, participantIds)) {
     return;
   }
-
-  const inputs: SplitInputs = {
-    shares: Object.fromEntries(
-      participantIds.map((id) => [id, parseFloat(formData.get(`share_${id}`) as string) || 0])
-    ),
-    percentages: Object.fromEntries(
-      participantIds.map((id) => [id, parseFloat(formData.get(`pct_${id}`) as string) || 0])
-    ),
-    exact: Object.fromEntries(
-      participantIds.map((id) => [id, parseFloat(formData.get(`exact_${id}`) as string) || 0])
-    ),
-  };
-
-  const splits = computeSplits(splitType, Math.round(amount * 100) / 100, participantIds, inputs, paidById);
-  if (splits.length === 0) return;
 
   const [existingExpense, existingSplits] = await Promise.all([
     db.query.expenses.findFirst({
@@ -345,7 +289,6 @@ export async function updateExpense(groupId: string, expenseId: string, formData
   ]);
   if (!existingExpense) return;
 
-  const roundedAmount = Math.round(amount * 100) / 100;
   const beforeSnapshot = serializeExpenseSnapshot(
     createExpenseSnapshot(existingExpense, existingSplits)
   );
@@ -353,7 +296,7 @@ export async function updateExpense(groupId: string, expenseId: string, formData
     createExpenseSnapshot(
       {
         description,
-        amount: roundedAmount,
+        amount,
         paidById,
         splitType,
         date,
@@ -367,7 +310,7 @@ export async function updateExpense(groupId: string, expenseId: string, formData
       .update(expenses)
       .set({
         description,
-        amount: roundedAmount,
+        amount,
         paidById,
         splitType,
         date,
@@ -401,17 +344,13 @@ export async function deleteExpense(groupId: string, expenseId: string) {
 
 export async function createSettlement(groupId: string, formData: FormData) {
   const { user } = await requireGroupAccess(groupId);
-  const paidById = formData.get("paidById") as string;
-  const paidToId = formData.get("paidToId") as string;
-  const amount = parseFloat(formData.get("amount") as string);
-  const note = (formData.get("note") as string)?.trim() || null;
-  const date = formData.get("date") as string;
+  const parsedSettlement = parseSettlementForm(formData);
   const redirectTo = getSettleRedirectTarget(groupId, formData.get("redirectTo"));
   const actionKind = "createSettlement" as const;
   const submissionToken = readSubmissionToken(formData);
 
-  if (!paidById || !paidToId || paidById === paidToId || isNaN(amount) || amount <= 0 || !date)
-    return;
+  if (!parsedSettlement.ok) return;
+  const { paidById, paidToId, amount, note, date } = parsedSettlement.value;
 
   const groupMemberIds = await getGroupMemberIdSet(groupId);
   if (!areGroupMemberIds(groupMemberIds, [paidById, paidToId])) {
@@ -434,7 +373,7 @@ export async function createSettlement(groupId: string, formData: FormData) {
         groupId,
         paidById,
         paidToId,
-        amount: Math.round(amount * 100) / 100,
+        amount,
         note,
         reversalOfSettlementId: null,
         date,
