@@ -956,6 +956,40 @@ test.describe("Group management", () => {
         await ownerPage.unroute("**/*", heldPostHandler);
       }
 
+      const peerTriggerAfterFirstRemoval = accountAccessRow(
+        ownerPage,
+        peer.email,
+      ).getByRole("button", { name: "Remove access" });
+      await peerTriggerAfterFirstRemoval.click();
+      const peerConfirm = accountAccessRow(
+        ownerPage,
+        peer.email,
+      ).getByRole("button", { name: "Confirm remove" });
+      await expectFocusedConfirmation(
+        peerConfirm,
+        `Remove app access for ${peer.email}? Their ledger member and history will remain.`,
+      );
+      await peerConfirm.click();
+
+      await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
+      await expect(accountAccessRow(ownerPage, peer.email)).toHaveCount(0);
+      const repeatedAccessRemovedStatus = appAccessSection(ownerPage).locator(
+        ':scope > [role="status"]',
+      );
+      await expect(repeatedAccessRemovedStatus).toHaveText("Access removed.");
+      await expect
+        .poll(
+          () => new URL(ownerPage.url()).searchParams.has("accessManagement"),
+        )
+        .toBe(false);
+      await expect(ownerPage).toHaveURL(groupPath);
+      await expect(repeatedAccessRemovedStatus).toHaveText("Access removed.");
+      await expect(ownerRow).toBeVisible();
+      await expect(
+        ownerRow.getByRole("button", { name: "Remove access" }),
+      ).toHaveCount(0);
+      await expect(ownerRow.getByLabel("Ledger member")).not.toBeFocused();
+
       const revokedResponse = await targetPage.goto(groupPath);
       expect(revokedResponse?.status()).toBe(404);
       await expect(targetPage.getByText("404", { exact: true })).toBeVisible();
@@ -966,7 +1000,8 @@ test.describe("Group management", () => {
         appAccessSection(ownerPage).locator(':scope > [role="status"]'),
       ).toHaveCount(0);
       await expect(accountAccessRow(ownerPage, target.email)).toHaveCount(0);
-      await expect(accountAccessRow(ownerPage, peer.email)).toBeVisible();
+      await expect(accountAccessRow(ownerPage, peer.email)).toHaveCount(0);
+      await expect(ownerRow).toBeVisible();
       await expectLedgerEvidence(ownerPage, expenseDescription);
       await expect(
         ownerPage
@@ -988,6 +1023,7 @@ test.describe("Group management", () => {
       await expect(restoredTargetRow.getByLabel("Ledger member")).toHaveValue(
         targetMemberId!,
       );
+      await expect(accountAccessRow(ownerPage, peer.email)).toHaveCount(0);
       await expectLedgerEvidence(ownerPage, expenseDescription);
 
       await targetPage.goto(groupPath);
