@@ -147,6 +147,19 @@ describe("shares split", () => {
     expect(total(splits)).toBe(7.77);
   });
 
+  it("does not subtract a negative remainder from a zero-share participant", () => {
+    const splits = computeSplits(
+      "shares",
+      0.01,
+      ["alice", "bob", "carol"],
+      { shares: { alice: 1, bob: 0, carol: 1 } },
+      "alice"
+    );
+
+    expect(amounts(splits)).toEqual([0.01, 0, 0]);
+    expect(total(splits)).toBe(0.01);
+  });
+
   it("avoids overflow when a large amount has a large share weight", () => {
     const splits = computeSplits(
       "shares",
@@ -203,6 +216,19 @@ describe("percentage split", () => {
       "bob"
     );
     expect(total(splits)).toBe(99.99);
+  });
+
+  it("does not subtract a negative remainder from a zero-percent participant", () => {
+    const splits = computeSplits(
+      "percentage",
+      0.01,
+      ["alice", "bob", "carol"],
+      { percentages: { alice: 50, bob: 0, carol: 50 } },
+      "alice"
+    );
+
+    expect(amounts(splits)).toEqual([0.01, 0, 0]);
+    expect(total(splits)).toBe(0.01);
   });
 });
 

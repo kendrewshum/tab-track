@@ -64,8 +64,13 @@ export function computeSplits(
         ? [payerIdx, ...Array.from({ length: n }, (_, i) => i).filter((i) => i !== payerIdx)]
         : [...Array.from({ length: n }, (_, i) => i).filter((i) => i !== payerIdx), payerIdx];
 
-    for (let i = 0; i < Math.abs(diff) && i < order.length; i++) {
-      result[order[i]] += step;
+    let centsRemaining = Math.abs(diff);
+    for (const participantIndex of order) {
+      if (centsRemaining === 0) break;
+      if (step < 0 && result[participantIndex] === 0) continue;
+
+      result[participantIndex] += step;
+      centsRemaining--;
     }
     return result.map((c) => c / 100);
   };
