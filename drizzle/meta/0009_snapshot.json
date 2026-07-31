@@ -771,13 +771,6 @@
         }
       },
       "indexes": {
-        "members_group_id_idx": {
-          "name": "members_group_id_idx",
-          "columns": [
-            "group_id"
-          ],
-          "isUnique": false
-        },
         "members_group_user_unique": {
           "name": "members_group_user_unique",
           "columns": [
