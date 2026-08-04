@@ -1,29 +1,19 @@
-import { createClient } from "@libsql/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildFingerprint, diffFingerprints } from "../fingerprint.mjs";
+import { buildExpectedFingerprint, readMigrations } from "../state.mjs";
 import {
+  addLedger,
   BASELINE_MILLIS,
-  buildExpectedFingerprint,
-  readMigrations,
-} from "../state.mjs";
+  closeFixtureClients,
+  LATEST_MILLIS,
+  productionDatabase,
+  replay,
+} from "./fixtures.mjs";
 
 const GROUPS_FK_PRODUCTION = "created_by_user_id->users.id upd=NO ACTION del=SET NULL";
 const GROUPS_FK_REPLAY = "created_by_user_id->users.id upd=NO ACTION del=NO ACTION";
 
-const clients = [];
-afterEach(() => {
-  while (clients.length > 0) clients.pop()?.close();
-});
-
-async function replay(migrations, throughMillis, transform = (sql) => sql) {
-  const client = createClient({ url: ":memory:" });
-  clients.push(client);
-  for (const migration of migrations) {
-    if (migration.folderMillis > throughMillis) break;
-    for (const statement of transform(migration.sql)) await client.execute(statement);
-  }
-  return client;
-}
+afterEach(closeFixtureClients);
 
 describe("readMigrations", () => {
   it("reads the committed migrations with drizzle's own hashes", () => {
@@ -97,48 +87,25 @@ describe("buildExpectedFingerprint", () => {
 
 import { classifyDatabaseState, LEDGER_TABLE } from "../state.mjs";
 
-const LATEST_MILLIS = 1785449603211;
-
-/** Reproduces the live production shape: 0003 with push's ON DELETE set null. */
-async function productionDatabase(migrations, throughMillis = BASELINE_MILLIS) {
-  return replay(migrations, throughMillis, (statements) =>
-    statements.map((statement) =>
-      statement.includes("ADD `created_by_user_id`")
-        ? `${statement.replace(/;?\s*$/, "")} ON DELETE set null`
-        : statement,
-    ),
-  );
-}
-
-async function addLedger(client, rows) {
-  await client.execute(
-    `CREATE TABLE ${LEDGER_TABLE} (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)`,
-  );
-  for (const [hash, createdAt] of rows) {
-    await client.execute({
-      sql: `INSERT INTO ${LEDGER_TABLE} ("hash","created_at") VALUES (?, ?)`,
-      args: [hash, createdAt],
-    });
-  }
-}
-
 describe("classifyDatabaseState", () => {
-  it("adopts a ledgerless database shaped exactly like production", async () => {
+  it("refuses a ledgerless database even when it matches a known level exactly", async () => {
     const migrations = readMigrations();
     const client = await productionDatabase(migrations);
 
     const result = await classifyDatabaseState({ client, migrations });
 
-    expect(result.action).toBe("ADOPT");
-    expect(result.createdAt).toBe(BASELINE_MILLIS);
-    expect(result.hash).toBe(
-      "41e17c250387a1851720407c1bc4bd0faf7fb65e1d088261eece1fb3a74bbf95",
-    );
+    // Matching a level is not proof of being at it: the schema alone cannot
+    // establish which migrations a db:push database actually ran. Adopting a
+    // baseline stays an operator decision, never a deploy's.
+    expect(result.action).toBe("REFUSE");
+    expect(result.reason).toContain("no migration ledger");
   });
 
-  it("refuses a ledgerless database with an unexpected extra table", async () => {
+  it("refuses a ledgered database with an unexpected extra table", async () => {
     const migrations = readMigrations();
     const client = await productionDatabase(migrations);
+    const baseline = migrations.find((m) => m.folderMillis === BASELINE_MILLIS);
+    await addLedger(client, [[baseline.hash, BASELINE_MILLIS]]);
     await client.execute("CREATE TABLE `surprise` (`id` text)");
 
     const result = await classifyDatabaseState({ client, migrations });
@@ -147,9 +114,11 @@ describe("classifyDatabaseState", () => {
     expect(result.diff.join("\n")).toContain("surprise");
   });
 
-  it("refuses a ledgerless database with a dropped index", async () => {
+  it("refuses a ledgered database with a dropped index", async () => {
     const migrations = readMigrations();
     const client = await productionDatabase(migrations);
+    const baseline = migrations.find((m) => m.folderMillis === BASELINE_MILLIS);
+    await addLedger(client, [[baseline.hash, BASELINE_MILLIS]]);
     await client.execute("DROP INDEX `users_email_unique`");
 
     const result = await classifyDatabaseState({ client, migrations });
@@ -158,10 +127,12 @@ describe("classifyDatabaseState", () => {
     expect(result.diff.join("\n")).toContain("users_email_unique");
   });
 
-  it("refuses a ledgerless database still carrying the replay foreign key", async () => {
+  it("refuses a ledgered database still carrying the replay foreign key", async () => {
     const migrations = readMigrations();
     // An unpatched replay - NO ACTION where production has SET NULL.
     const client = await replay(migrations, BASELINE_MILLIS);
+    const baseline = migrations.find((m) => m.folderMillis === BASELINE_MILLIS);
+    await addLedger(client, [[baseline.hash, BASELINE_MILLIS]]);
 
     const result = await classifyDatabaseState({ client, migrations });
 
