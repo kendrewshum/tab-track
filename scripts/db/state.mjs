@@ -6,9 +6,6 @@ import { buildFingerprint, diffFingerprints } from "./fingerprint.mjs";
 
 export const LEDGER_TABLE = "__drizzle_migrations";
 
-/** Journal timestamp of 0003_abandoned_black_bolt, the shape production is in. */
-export const BASELINE_MILLIS = 1777261198039;
-
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const MIGRATIONS_FOLDER = path.resolve(projectRoot, "drizzle");
 
@@ -26,7 +23,8 @@ export const MIGRATIONS_FOLDER = path.resolve(projectRoot, "drizzle");
  * A canary test asserts the raw replay still yields NO ACTION; when that test
  * fails, 0002 has been fixed and this correction should be deleted.
  */
-const GROUPS_FOREIGN_KEYS = ["created_by_user_id->users.id upd=NO ACTION del=SET NULL"];
+const GROUPS_DRIFTED_FK = "created_by_user_id->users.id upd=NO ACTION del=NO ACTION";
+const GROUPS_ACTUAL_FK = "created_by_user_id->users.id upd=NO ACTION del=SET NULL";
 
 export function readMigrations(migrationsFolder = MIGRATIONS_FOLDER) {
   return readMigrationFiles({ migrationsFolder });
@@ -40,7 +38,11 @@ export async function buildExpectedFingerprint(migrations, throughMillis) {
       for (const statement of migration.sql) await client.execute(statement);
     }
     const fingerprint = await buildFingerprint(client);
-    if (fingerprint.groups) fingerprint.groups.foreignKeys = [...GROUPS_FOREIGN_KEYS];
+    // Replace only the drifted entry. Overwriting the whole array would
+    // silently drop any foreign key a later migration adds to `groups`.
+    const groupsForeignKeys = fingerprint.groups?.foreignKeys;
+    const drifted = groupsForeignKeys?.indexOf(GROUPS_DRIFTED_FK) ?? -1;
+    if (drifted !== -1) groupsForeignKeys[drifted] = GROUPS_ACTUAL_FK;
     return fingerprint;
   } finally {
     client.close();
@@ -71,29 +73,22 @@ async function compare(client, migrations, throughMillis) {
 /**
  * Decide what the live database needs. Fails closed: anything not recognised as
  * a legitimate migration level with a matching schema is refused, never guessed
- * at and never partially baselined.
+ * at and never migrated on the strength of an assumption.
  */
 export async function classifyDatabaseState({ client, migrations }) {
   const latestMigration = migrations.at(-1);
 
   if (!(await hasLedger(client))) {
-    const baseline = migrations.find((m) => m.folderMillis === BASELINE_MILLIS);
-    if (!baseline) {
-      return {
-        action: "REFUSE",
-        reason: `no migration found at baseline timestamp ${BASELINE_MILLIS}`,
-        diff: [],
-      };
-    }
-    const diff = await compare(client, migrations, BASELINE_MILLIS);
-    if (diff.length > 0) {
-      return {
-        action: "REFUSE",
-        reason: "database has no migration ledger and does not match the 0003 baseline",
-        diff,
-      };
-    }
-    return { action: "ADOPT", hash: baseline.hash, createdAt: BASELINE_MILLIS };
+    // A ledgerless database was built by `db:push` and its real migration level
+    // cannot be inferred from the schema alone: two different levels can
+    // produce the same tables. Adopting a baseline is a deliberate operator
+    // decision, not something a deploy may take on its own, because a wrong
+    // baseline makes drizzle permanently skip migrations that never ran.
+    return {
+      action: "REFUSE",
+      reason: "database has no migration ledger; it must be adopted deliberately, not by a deploy",
+      diff: [],
+    };
   }
 
   let latest;

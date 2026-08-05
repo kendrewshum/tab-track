@@ -1,9 +1,9 @@
 # Deployment
 
-TabTrack deploys on Vercel and stores hosted data in Turso. Database
-migrations are an explicit operator action: application builds never change
-the database schema, except for the guarded one-time baseline adoption step
-described in "One-time production baseline adoption" below.
+TabTrack deploys on Vercel and stores hosted data in Turso. Production deploys
+apply committed migrations automatically: `node scripts/db/cli.mjs` runs before
+the build when `VERCEL_ENV=production`. Preview and local builds never touch a
+database. See "Production migrations on deploy" below.
 
 ## Environments
 
@@ -104,71 +104,52 @@ Use Preview first:
 
 5. Deploy the compatible application version to Preview.
 6. Verify signup or login, open a group, and check `/api/health`.
-7. Repeat the target verification and migration for Production.
-8. Deploy the same verified application version to Production and repeat the
-   smoke checks.
+7. Deploy to Production. The deploy applies the same migrations itself; do not
+   run `npm run db:migrate` against Production by hand.
 
 `npm run db:push` remains available only for deliberate local schema
 prototyping. It is not a deployment command.
 
-## One-time production baseline adoption
+## Production migrations on deploy
 
-Production predates the migration ledger: it was built by `db:push` and sits at
-the `0003` schema with no `__drizzle_migrations` table. `node scripts/db/cli.mjs`
-runs at the start of every Vercel build and adopts that schema as `0003` before
-applying `0004`-`0009`.
+`node scripts/db/cli.mjs` runs before the build. Outside `VERCEL_ENV=production`
+it prints a `skipped:` line and exits without opening a connection, so Preview
+and local builds never touch a database.
 
-It is inert unless **both** hold:
+On Production it reads the `__drizzle_migrations` ledger, compares the live
+schema against what the committed migrations produce for the level the ledger
+claims, applies anything newer, then re-verifies. It refuses and fails the
+build — writing nothing — if the ledger is missing, empty, at an unrecognised
+timestamp, carries a hash that does not match the committed migration file, or
+if the live schema disagrees with the ledger. The refusal prints the diff.
 
-- `VERCEL_ENV=production`
-- `DB_ADOPT_BASELINE=0003`
+Two consequences worth planning around:
 
-It compares the live schema against the committed migrations before writing
-anything and refuses, failing the build, on any mismatch.
+- A migration must be backward compatible with the release currently serving
+  traffic, because the schema changes before the new build is promoted.
+- A database with no ledger is refused, not adopted. Adopting a legacy
+  `db:push` database is a deliberate operator action — see the section above.
 
-### Procedure
+To check a live database yourself, with that environment's credentials loaded:
 
-1. Take a backup and record the UTC timestamp. Turso PITR is always on;
-   retention is 24 hours on Free, longer on paid plans. A PITR restore creates a
-   *new* database, so recovery also means repointing `TURSO_DATABASE_URL`.
-2. Verify out of band that the Production database schema matches the expected
-   baseline. The test suite validates against a reconstructed schema from the
-   committed migrations, not a live sample. In a trusted environment with
-   Production Turso credentials loaded, run:
+```bash
+node scripts/db/check-schema.mjs                       # against the latest migration
+node scripts/db/check-schema.mjs 0003_abandoned_black_bolt   # against an earlier level
+```
 
-   ```bash
-   node --input-type=module -e '
-   import { createClient } from "@libsql/client";
-   import { readMigrations, buildExpectedFingerprint, BASELINE_MILLIS } from "./scripts/db/state.mjs";
-   import { buildFingerprint, diffFingerprints } from "./scripts/db/fingerprint.mjs";
-   const client = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
-   try {
-     const migrations = readMigrations();
-     const expected = await buildExpectedFingerprint(migrations, BASELINE_MILLIS);
-     const actual = await buildFingerprint(client);
-     const differences = diffFingerprints(expected, actual);
-     if (differences.length === 0) console.log("✓ Schema matches baseline");
-     else { console.log("Schema mismatches:"); differences.forEach(d => console.log("  " + d)); process.exit(1); }
-   } finally { client.close(); }
-   '
-   ```
+It is read-only, and prints only the protocol and host of the target, never the
+connection string or token.
 
-   Expect "Schema matches baseline" or a diff output. The guarded run will refuse
-   and fail the build on any mismatch, but discovering it beforehand prevents a
-   production deployment failure.
-3. Merge the change to `main`. It stays inert without the environment variable.
-4. Add `DB_ADOPT_BASELINE=0003` to the Vercel **Production** environment.
-5. Trigger a Production deployment. While an Instant Rollback is active the new
-   build does not take traffic.
-6. Read the build log: expect `adopting baseline`, then `complete and verified`.
-7. Smoke-test login on the deployment URL.
-8. Promote the deployment / undo the rollback.
-9. Remove `DB_ADOPT_BASELINE` immediately.
+### Historical: how Production was adopted
 
-After step 9, the script is a permanent no-op again: it only acts when both
-`VERCEL_ENV=production` and `DB_ADOPT_BASELINE=0003` are set, and the latter
-is now removed. Applying future migrations to Production goes back to being
-a manual `npm run db:migrate` action, as described above.
+Production was built by `db:push` and had no ledger. On 2026-08-04 it was
+adopted at `0003_abandoned_black_bolt` and migrated through `0009`, using a
+temporary `DB_ADOPT_BASELINE` opt-in that has since been removed along with the
+adoption code. This is recorded for context only; there is nothing here to
+re-run. Should another legacy database ever need adopting, use the manual
+procedure in "Existing databases created by `db:push`" above, and note that
+Vercel reads environment variables at build time — setting one does not affect
+an existing deployment, so a fresh build is required.
 
 ## Rollback and recovery
 
