@@ -1,9 +1,10 @@
 # Deployment
 
-TabTrack deploys on Vercel and stores hosted data in Turso. Production deploys
-apply committed migrations automatically: `node scripts/db/cli.mjs` runs before
-the build when `VERCEL_ENV=production`. Preview and local builds never touch a
-database. See "Production migrations on deploy" below.
+TabTrack deploys on Vercel and stores hosted data in Turso. Deploys apply
+committed migrations themselves: `node scripts/db/cli.mjs` runs before the
+build and migrates on Production, and on the `staging` branch that rehearses
+it. Per-pull-request previews and local builds never touch a database. See
+"Migrations on deploy" below.
 
 ## Environments
 
@@ -91,32 +92,47 @@ Production.
 
 ## Migrate and deploy
 
-Use Preview first:
+Deploys apply migrations themselves. Do not run `npm run db:migrate` against
+Production by hand.
 
-1. Review the committed SQL in `drizzle/`.
-2. Export the Preview `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`.
-3. Verify the target as described above.
-4. Apply committed migrations:
-
-   ```bash
-   npm run db:migrate
-   ```
-
-5. Deploy the compatible application version to Preview.
-6. Verify signup or login, open a group, and check `/api/health`.
-7. Deploy to Production. The deploy applies the same migrations itself; do not
-   run `npm run db:migrate` against Production by hand.
+1. Change `src/db/schema.ts`, then `npm run db:generate`.
+2. Read the generated SQL in `drizzle/`. This is the review gate — see the
+   backward-compatibility rule below before writing anything destructive.
+3. Open a pull request. Its preview build does **not** migrate, so the preview
+   exercises the new code against the current Preview schema.
+4. Merge to `staging`. That deploy migrates the Preview database and rehearses
+   the exact path Production will take, against a real remote Turso database.
+   Verify signup or login, open a group, and check `/api/health`.
+5. Merge to `main`. The Production deploy applies the same migrations and
+   verifies the result.
 
 `npm run db:push` remains available only for deliberate local schema
 prototyping. It is not a deployment command.
 
-## Production migrations on deploy
+## Migrations on deploy
 
-`node scripts/db/cli.mjs` runs before the build. Outside `VERCEL_ENV=production`
-it prints a `skipped:` line and exits without opening a connection, so Preview
-and local builds never touch a database.
+`node scripts/db/cli.mjs` runs before the build. It migrates on two kinds of
+deploy and skips everything else:
 
-On Production it reads the `__drizzle_migrations` ledger, compares the live
+| Deploy | Behaviour |
+| --- | --- |
+| `VERCEL_ENV=production` | Migrates the Production database |
+| Preview build of the `staging` branch | Migrates the Preview database |
+| Any other preview branch | Skips, no connection opened |
+| Local build | Skips, no connection opened |
+
+Per-pull-request previews deliberately do not migrate. Every preview shares one
+Preview database, so a branch that predates the newest migration would find a
+ledger timestamp its own `drizzle/` folder does not contain, refuse, and fail
+the build of every pull request opened before that migration landed. `staging`
+is the single branch allowed to move the Preview schema forward.
+
+Because `staging` can move ahead of an open pull request, that pull request's
+preview runs older code against a newer schema. The backward-compatibility rule
+below is what makes that safe — it is the same guarantee Production relies on
+between migrating and promoting the new build.
+
+When it runs, it reads the `__drizzle_migrations` ledger, compares the live
 schema against what the committed migrations produce for the level the ledger
 claims, applies anything newer, then re-verifies. It refuses and fails the
 build — writing nothing — if the ledger is missing, empty, at an unrecognised

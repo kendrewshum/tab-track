@@ -34,14 +34,31 @@ async function tableExists(client, name) {
 }
 
 describe("shouldRun", () => {
-  it("skips outside Vercel production", () => {
+  it("runs on a production deploy", () => {
+    expect(shouldRun({ VERCEL_ENV: "production" }).run).toBe(true);
+  });
+
+  it("runs on the staging branch so it rehearses the production path", () => {
+    expect(shouldRun({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "staging" }).run).toBe(true);
+  });
+
+  it("skips every other preview branch", () => {
+    // Per-PR previews share one database. Migrating from a branch that predates
+    // the newest migration would leave a ledger the branch cannot recognise.
+    expect(shouldRun({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/x" }).run).toBe(false);
     expect(shouldRun({ VERCEL_ENV: "preview" }).run).toBe(false);
+    expect(shouldRun({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "Staging" }).run).toBe(false);
+  });
+
+  it("skips outside Vercel entirely", () => {
     expect(shouldRun({ VERCEL_ENV: "development" }).run).toBe(false);
     expect(shouldRun({}).run).toBe(false);
   });
 
-  it("runs on a production deploy", () => {
-    expect(shouldRun({ VERCEL_ENV: "production" }).run).toBe(true);
+  it("names the branch in a skipped preview so the log is diagnosable", () => {
+    expect(shouldRun({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/x" }).reason).toContain(
+      "feature/x",
+    );
   });
 });
 
