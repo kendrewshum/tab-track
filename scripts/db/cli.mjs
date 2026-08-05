@@ -11,16 +11,32 @@ import {
   readMigrations,
 } from "./state.mjs";
 
+const STAGING_BRANCH = "staging";
+
 /**
- * Production deploys apply committed migrations; every other environment is
- * left alone. The build command is global to every Vercel environment, so the
- * guard has to live here rather than in vercel.json.
+ * Production deploys migrate, and so does the staging branch, which shares the
+ * Preview database and exists to rehearse this exact path against a real remote
+ * database before Production runs it.
+ *
+ * Per-pull-request previews deliberately do NOT migrate. They share one Preview
+ * database, so a branch that predates the newest migration would find a ledger
+ * timestamp its own drizzle/ folder does not contain and refuse, failing the
+ * build of every pull request opened before the latest migration landed.
+ *
+ * The build command is global to every Vercel environment, so the guard has to
+ * live here rather than in vercel.json.
  */
 export function shouldRun(env) {
-  if (env.VERCEL_ENV !== "production") {
-    return { run: false, reason: `skipped: VERCEL_ENV is ${env.VERCEL_ENV ?? "unset"}` };
+  if (env.VERCEL_ENV === "production") {
+    return { run: true, reason: "production deploy" };
   }
-  return { run: true, reason: "production deploy" };
+  if (env.VERCEL_ENV === "preview" && env.VERCEL_GIT_COMMIT_REF === STAGING_BRANCH) {
+    return { run: true, reason: `staging deploy (${STAGING_BRANCH})` };
+  }
+  if (env.VERCEL_ENV === "preview") {
+    return { run: false, reason: `skipped: preview build of ${env.VERCEL_GIT_COMMIT_REF ?? "unknown branch"}` };
+  }
+  return { run: false, reason: `skipped: VERCEL_ENV is ${env.VERCEL_ENV ?? "unset"}` };
 }
 
 export async function verifyFinalState(client, migrations) {
