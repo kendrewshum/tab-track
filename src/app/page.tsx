@@ -32,7 +32,7 @@ export default async function HomePage() {
         <h1 className="text-2xl font-bold text-slate-900">Groups</h1>
         <Link
           href="/groups/new"
-          className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+          className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
         >
           <Plus size={16} />
           New Group
@@ -41,7 +41,7 @@ export default async function HomePage() {
 
       {allGroups.length === 0 ? (
         <div className="text-center py-16">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">💸</span>
           </div>
           <p className="text-slate-700 font-medium text-lg">No groups yet</p>
@@ -50,7 +50,7 @@ export default async function HomePage() {
           </p>
           <Link
             href="/groups/new"
-            className="inline-flex items-center gap-1.5 bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+            className="inline-flex items-center gap-1.5 bg-brand-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
           >
             <Plus size={16} />
             Create your first group
@@ -62,7 +62,7 @@ export default async function HomePage() {
             <Link
               key={group.id}
               href={`/groups/${group.id}`}
-              className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-4 py-4 hover:border-green-400 hover:shadow-sm transition-all"
+              className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-4 py-4 hover:border-brand-400 hover:shadow-sm transition-all"
             >
               <div>
                 <p className="font-semibold text-slate-900">{group.name}</p>

@@ -111,7 +111,7 @@ export default async function SettlePage({
   return (
     <div className="space-y-6">
       <div>
-        <Link href={groupPageHref} className="text-sm text-green-600 hover:text-green-700">
+        <Link href={groupPageHref} className="text-sm text-brand-600 hover:text-brand-700">
           ← {group.name}
         </Link>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">Settle Up</h1>
@@ -134,10 +134,10 @@ export default async function SettlePage({
       <section>
         <h2 className="font-semibold text-slate-900 mb-3">Suggested Payments</h2>
         {debts.length === 0 ? (
-          <div className="text-center py-10 bg-green-50 border border-green-100 rounded-xl">
+          <div className="text-center py-10 bg-brand-50 border border-brand-100 rounded-xl">
             <p className="text-2xl mb-1">✓</p>
-            <p className="font-semibold text-green-800">All settled up!</p>
-            <p className="text-sm text-green-600 mt-1">Everyone&apos;s balances are even</p>
+            <p className="font-semibold text-brand-800">All settled up!</p>
+            <p className="text-sm text-brand-600 mt-1">Everyone&apos;s balances are even</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -147,7 +147,7 @@ export default async function SettlePage({
                   <span className="font-bold">{debt.fromName}</span>
                   <span className="text-slate-500"> pays </span>
                   <span className="font-bold">{debt.toName}</span>
-                  <span className="text-green-600 font-bold"> {formatCurrency(debt.amount)}</span>
+                  <span className="text-brand-600 font-bold"> {formatCurrency(debt.amount)}</span>
                 </p>
                 <form action={settleAction}>
                   <input type="hidden" name="_submissionToken" value={generateId()} />
@@ -158,7 +158,7 @@ export default async function SettlePage({
                   <input type="hidden" name="redirectTo" value={settlePageHref} />
                   <PendingSubmitButton
                     pendingLabel="Recording..."
-                    className="w-full py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                    className="w-full py-2 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors"
                   >
                     Mark as Settled
                   </PendingSubmitButton>
@@ -188,7 +188,7 @@ export default async function SettlePage({
               <label className="block text-xs font-medium text-slate-500 mb-1">From</label>
               <select
                 name="paidById"
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
               >
                 {groupMembers.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -201,7 +201,7 @@ export default async function SettlePage({
               <label className="block text-xs font-medium text-slate-500 mb-1">To</label>
               <select
                 name="paidToId"
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
               >
                 {groupMembers.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -221,7 +221,7 @@ export default async function SettlePage({
                 min="0.01"
                 required
                 placeholder="0.00"
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
             <div>
@@ -231,7 +231,7 @@ export default async function SettlePage({
                 type="date"
                 required
                 defaultValue={today()}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
           </div>
@@ -242,12 +242,12 @@ export default async function SettlePage({
             <input
               name="note"
               placeholder="e.g. Venmo, cash"
-              className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
           <PendingSubmitButton
             pendingLabel="Recording..."
-            className="w-full py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+            className="w-full py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors"
           >
             Record Payment
           </PendingSubmitButton>
@@ -278,7 +278,7 @@ export default async function SettlePage({
                     <span className="font-semibold">{memberMap.get(s.paidToId)}</span>
                     <span
                       className={`font-bold ${
-                        s.reversalOfSettlementId ? "text-amber-700" : "text-green-600"
+                        s.reversalOfSettlementId ? "text-amber-700" : "text-brand-600"
                       }`}
                     >
                       {" "}

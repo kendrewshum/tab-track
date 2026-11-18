@@ -6,6 +6,11 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+h1 {
+  font-family: theme("fontFamily.display");
+  letter-spacing: -0.015em;
+}
+
 body {
   color: #0f172a;
   background: #f8fafc;

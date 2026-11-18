@@ -27,7 +27,7 @@ export default async function NewExpensePage({
   return (
     <div className="space-y-6">
       <div>
-        <a href={`/groups/${id}`} className="text-sm text-green-600 hover:text-green-700">
+        <a href={`/groups/${id}`} className="text-sm text-brand-600 hover:text-brand-700">
           ← {group.name}
         </a>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">Add Expense</h1>

@@ -12,7 +12,7 @@ export default async function NewGroupPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-sm text-green-600 hover:text-green-700">
+        <Link href="/" className="text-sm text-brand-600 hover:text-brand-700">
           ← Groups
         </Link>
         <h1 className="text-2xl font-bold text-slate-900 mt-1">New Group</h1>

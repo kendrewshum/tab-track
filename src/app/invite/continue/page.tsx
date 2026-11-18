@@ -25,7 +25,7 @@ export default function ContinueInvitationPage() {
       </p>
       <a
         href={CLAIM_PATH}
-        className="mt-5 inline-flex rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700"
+        className="mt-5 inline-flex rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
       >
         Continue
       </a>

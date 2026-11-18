@@ -18,7 +18,7 @@ export function LoginForm({
     <form action={action} className="space-y-5">
       {hasGroupInvitation ? (
         <p
-          className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
+          className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800"
           role="status"
         >
           Sign in to accept your group invitation.
@@ -39,7 +39,7 @@ export function LoginForm({
           autoComplete="email"
           required
           placeholder="you@example.com"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -57,7 +57,7 @@ export function LoginForm({
           autoComplete="current-password"
           required
           placeholder="Your password"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -70,14 +70,14 @@ export function LoginForm({
       <button
         type="submit"
         disabled={pending}
-        className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-70"
+        className="w-full bg-brand-600 text-white py-3 rounded-xl font-semibold hover:bg-brand-700 transition-colors disabled:opacity-70"
       >
         {pending ? "Signing In..." : "Sign In"}
       </button>
 
       <p className="text-sm text-slate-500 text-center">
         Need an account?{" "}
-        <Link href="/signup" className="text-green-600 hover:text-green-700 font-medium">
+        <Link href="/signup" className="text-brand-600 hover:text-brand-700 font-medium">
           Create an account
         </Link>
       </p>

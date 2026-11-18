@@ -157,7 +157,7 @@ export function ExpenseForm({
           required
           placeholder="e.g. Dinner, Hotel, Uber"
           defaultValue={expense?.description}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -174,7 +174,7 @@ export function ExpenseForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
           />
         </div>
         <div>
@@ -184,7 +184,7 @@ export function ExpenseForm({
             type="date"
             required
             defaultValue={expense?.date ?? today()}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
           />
         </div>
       </div>
@@ -200,7 +200,7 @@ export function ExpenseForm({
           required
           value={paidById}
           onChange={(e) => setPaidById(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white"
         >
           {members.map((m) => (
             <option key={m.id} value={m.id}>
@@ -256,7 +256,7 @@ export function ExpenseForm({
                     type="button"
                     onClick={() => toggleParticipant(member.id)}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                      isIn ? "bg-green-600 border-green-600" : "border-slate-300 bg-white"
+                      isIn ? "bg-brand-600 border-brand-600" : "border-slate-300 bg-white"
                     }`}
                   >
                     {isIn && <span className="text-white text-[10px] font-bold">✓</span>}
@@ -278,7 +278,7 @@ export function ExpenseForm({
                             onChange={(e) =>
                               setShareValues((p) => ({ ...p, [member.id]: e.target.value }))
                             }
-                            className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-green-500"
+                            className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
                           <span className="text-xs text-slate-400">shares</span>
                         </>
@@ -295,7 +295,7 @@ export function ExpenseForm({
                             onChange={(e) =>
                               setPctValues((p) => ({ ...p, [member.id]: e.target.value }))
                             }
-                            className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-green-500"
+                            className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
                           <span className="text-xs text-slate-400">%</span>
                         </>
@@ -312,7 +312,7 @@ export function ExpenseForm({
                             onChange={(e) =>
                               setExactValues((p) => ({ ...p, [member.id]: e.target.value }))
                             }
-                            className="w-20 border border-slate-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-green-500"
+                            className="w-20 border border-slate-300 rounded-lg px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
                         </>
                       )}
@@ -335,7 +335,7 @@ export function ExpenseForm({
         <div
           className={`text-sm rounded-lg px-3 py-2 ${
             Math.abs(pctTotal - 100) < 0.01
-              ? "bg-green-50 text-green-700 border border-green-200"
+              ? "bg-brand-50 text-brand-700 border border-brand-200"
               : "bg-amber-50 text-amber-700 border border-amber-200"
           }`}
         >
@@ -347,7 +347,7 @@ export function ExpenseForm({
         <div
           className={`text-sm rounded-lg px-3 py-2 ${
             Math.abs(splitTotal - numericAmount) < 0.01
-              ? "bg-green-50 text-green-700 border border-green-200"
+              ? "bg-brand-50 text-brand-700 border border-brand-200"
               : "bg-amber-50 text-amber-700 border border-amber-200"
           }`}
         >
@@ -362,7 +362,7 @@ export function ExpenseForm({
       <PendingSubmitButton
         disabled={!isValid}
         pendingLabel={editing ? "Saving..." : "Adding..."}
-        className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full bg-brand-600 text-white py-3 rounded-xl font-semibold hover:bg-brand-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {editing ? "Save Changes" : "Add Expense"}
       </PendingSubmitButton>

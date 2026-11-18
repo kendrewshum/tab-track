@@ -220,7 +220,7 @@ export default async function GroupPage({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link href="/" className="text-sm text-green-600 hover:text-green-700">
+          <Link href="/" className="text-sm text-brand-600 hover:text-brand-700">
             ← Groups
           </Link>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">{group.name}</h1>
@@ -230,7 +230,7 @@ export default async function GroupPage({
         </div>
         <Link
           href={`/groups/${id}/expenses/new`}
-          className="flex-shrink-0 flex items-center gap-1.5 bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
         >
           <Plus size={16} />
           Expense
@@ -244,7 +244,7 @@ export default async function GroupPage({
           {debts.length > 0 && (
             <Link
               href={settlePageHref}
-              className="flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
+              className="flex items-center gap-1 text-sm text-brand-600 font-medium hover:text-brand-700"
             >
               Settle up <ArrowRight size={14} />
             </Link>
@@ -258,11 +258,11 @@ export default async function GroupPage({
             >
               <span className="text-sm font-medium text-slate-800">{b.memberName}</span>
               <span
-                className={`text-sm font-semibold ${
+                className={`text-sm font-semibold tabular-nums ${
                   b.net > 0.01
-                    ? "text-green-600"
+                    ? "text-positive"
                     : b.net < -0.01
-                    ? "text-red-500"
+                    ? "text-negative"
                     : "text-slate-400"
                 }`}
               >
@@ -289,7 +289,7 @@ export default async function GroupPage({
           </div>
         )}
         {debts.length === 0 && groupExpenses.length > 0 && (
-          <p className="text-center text-sm text-green-600 font-medium mt-3">
+          <p className="text-center text-sm text-brand-600 font-medium mt-3">
             ✓ All settled up!
           </p>
         )}
@@ -303,7 +303,7 @@ export default async function GroupPage({
             <p className="text-slate-400 text-sm">No expenses yet</p>
             <Link
               href={`/groups/${id}/expenses/new`}
-              className="mt-2 inline-flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
+              className="mt-2 inline-flex items-center gap-1 text-sm text-brand-600 font-medium hover:text-brand-700"
             >
               <Plus size={14} /> Add first expense
             </Link>
@@ -431,7 +431,7 @@ export default async function GroupPage({
                       <span className="font-semibold">{memberMap.get(event.paidById)}</span>
                       <span className="text-slate-500"> paid </span>
                       <span className="font-semibold">{memberMap.get(event.paidToId)}</span>
-                      <span className="font-semibold text-green-600">
+                      <span className="font-semibold text-brand-600">
                         {" "}
                         {formatCurrency(event.amount)}
                       </span>
@@ -465,7 +465,7 @@ export default async function GroupPage({
             {hasMoreActivity && (
               <Link
                 href={`/groups/${id}?activity=${nextActivityVisibleCount}`}
-                className="inline-flex items-center gap-1 text-sm text-green-600 font-medium hover:text-green-700"
+                className="inline-flex items-center gap-1 text-sm text-brand-600 font-medium hover:text-brand-700"
               >
                 Load more activity
               </Link>
@@ -488,7 +488,7 @@ export default async function GroupPage({
             <input
               name="name"
               placeholder="Add a member…"
-              className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
             />
             <PendingSubmitButton
               pendingLabel="Adding..."
