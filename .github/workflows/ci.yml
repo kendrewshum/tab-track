@@ -22,7 +22,9 @@ jobs:
   e2e-tests:
     name: e2e-tests
     needs: unit-tests
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.59 cannot install Chromium.
+    # Move back to ubuntu-latest once Playwright supports it.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
