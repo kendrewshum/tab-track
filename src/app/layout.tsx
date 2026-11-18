@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Geist } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { TabTrackLogo } from "@/components/tab-track-logo";
 
@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/server/session";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
   weight: ["600", "700"],
@@ -42,7 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const user = await getCurrentUser();
 
   return (
-    <html lang="en" className={`${geist.variable} ${bricolage.variable}`}>
+    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${bricolage.variable}`}>
       <head />
       <body className="font-sans">
         <div className="min-h-screen bg-slate-50">

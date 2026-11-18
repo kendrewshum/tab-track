@@ -397,6 +397,66 @@ test.describe("Group management", () => {
     await expect(groupCard).toContainText("2 members");
   });
 
+  test("home shows where you stand once your account is linked to a member", async ({
+    page,
+  }) => {
+    const account = await signUpAndLogin(page);
+    await page.goto("/groups/new");
+    await page.getByPlaceholder("e.g. Tokyo Trip, Apartment").fill("Porto Weekend");
+    await page.getByPlaceholder("Member 1").fill("Maria");
+    await page.getByPlaceholder("Member 2").fill("Carlos");
+    await page.getByRole("button", { name: "Create Group" }).click();
+    await page.waitForURL((url) => extractCreatedGroupId(url.toString()) !== null);
+    const groupId = extractCreatedGroupId(page.url())!;
+
+    await fillExpenseBase(page, groupId, { description: "Dinner", amount: "40", paidBy: "Maria" });
+    await page.getByRole("button", { name: "Add Expense" }).click();
+    await expect(page).toHaveURL(`/groups/${groupId}`);
+
+    // Not linked to a member yet: no overall balance, no per-group amount.
+    await page.goto("/");
+    const overall = page.getByRole("region", { name: "Overall balance" });
+    const groupRow = page.locator(`a[href='/groups/${groupId}']`);
+    await expect(overall).toHaveCount(0);
+    await expect(groupRow).not.toContainText("you're owed");
+
+    await page.goto(`/groups/${groupId}`);
+    const ownRow = accountAccessRow(page, account.email);
+    await ownRow.getByLabel("Ledger member").selectOption({ label: "Maria" });
+    await expect(ownRow.getByLabel("Ledger member")).toHaveValue(/.+/);
+
+    const balancesSection = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Balances" }) });
+    await expect(balancesSection.getByText("you", { exact: true })).toBeVisible();
+
+    await page.goto("/");
+    await expect(overall).toContainText("Across your groups you're owed");
+    await expect(overall).toContainText("$20.00");
+    await expect(groupRow).toContainText("+$20.00");
+    await expect(groupRow).toContainText("you're owed");
+  });
+
+  test("add expense sits at the bottom of the screen on phones", async ({ page }) => {
+    const id = await createTestGroup(page, "Thumb Reach", ["Ana", "Ben"]);
+    const isPhone = (page.viewportSize()?.width ?? 1280) < 640;
+
+    const bottomAction = page.getByRole("link", { name: "Add expense", exact: true });
+    const headerAction = page.getByRole("link", { name: "Expense", exact: true });
+
+    if (isPhone) {
+      await expect(bottomAction).toBeVisible();
+      await expect(headerAction).toBeHidden();
+      await expectNoHorizontalOverflow(page.locator("body"));
+      await bottomAction.click();
+    } else {
+      await expect(headerAction).toBeVisible();
+      await expect(bottomAction).toBeHidden();
+      await headerAction.click();
+    }
+    await expect(page).toHaveURL(`/groups/${id}/expenses/new`);
+  });
+
   test("can add more members to an existing group", async ({ page }) => {
     await createTestGroup(page, "Dinner Club", ["Alice", "Bob"]);
 
