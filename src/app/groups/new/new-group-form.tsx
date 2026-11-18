@@ -43,7 +43,7 @@ export function NewGroupForm({ submissionToken: initialSubmissionToken }: { subm
           name="name"
           required
           placeholder="e.g. Tokyo Trip, Apartment"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -57,7 +57,7 @@ export function NewGroupForm({ submissionToken: initialSubmissionToken }: { subm
                 value={val}
                 onChange={(e) => updateMember(i, e.target.value)}
                 placeholder={`Member ${i + 1}`}
-                className="flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="flex-1 border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
               />
               {memberInputs.length > 2 ? (
                 <button
@@ -74,7 +74,7 @@ export function NewGroupForm({ submissionToken: initialSubmissionToken }: { subm
         <button
           type="button"
           onClick={addMember}
-          className="mt-2 flex items-center gap-1.5 text-sm text-green-600 font-medium hover:text-green-700"
+          className="mt-2 flex items-center gap-1.5 text-sm text-brand-600 font-medium hover:text-brand-700"
         >
           <Plus size={15} />
           Add another member
@@ -83,7 +83,7 @@ export function NewGroupForm({ submissionToken: initialSubmissionToken }: { subm
 
       <PendingSubmitButton
         pendingLabel="Creating..."
-        className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors"
+        className="w-full bg-brand-600 text-white py-3 rounded-xl font-semibold hover:bg-brand-700 transition-colors"
       >
         Create Group
       </PendingSubmitButton>

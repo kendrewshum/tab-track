@@ -26,7 +26,7 @@ export function AccessManagementStatus({
 
   return (
     <p
-      className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700"
+      className="mb-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700"
       role="status"
       aria-live="polite"
     >

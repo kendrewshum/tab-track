@@ -81,7 +81,7 @@ export function InviteUserForm({
             type="email"
             autoComplete="email"
             placeholder="friend@example.com"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </label>
         <label className="space-y-1" htmlFor={`${formId}-member`}>
@@ -92,7 +92,7 @@ export function InviteUserForm({
             id={`${formId}-member`}
             name="memberId"
             defaultValue=""
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="">No linked member</option>
             {choices.map((choice) => (
@@ -120,13 +120,13 @@ export function InviteUserForm({
       ) : null}
 
       {state.success ? (
-        <p className="text-sm text-green-600" role="status">
+        <p className="text-sm text-brand-600" role="status">
           {state.success}
         </p>
       ) : null}
 
       {!pending && state.invitationPath ? (
-        <div className="space-y-2 rounded-lg border border-green-200 bg-green-50 p-3">
+        <div className="space-y-2 rounded-lg border border-brand-200 bg-brand-50 p-3">
           <label
             className="block text-sm font-medium text-slate-700"
             htmlFor={`${formId}-invitation-path`}
@@ -138,18 +138,18 @@ export function InviteUserForm({
               id={`${formId}-invitation-path`}
               readOnly
               value={state.invitationPath}
-              className="min-w-0 flex-1 rounded-lg border border-green-200 bg-white px-3 py-2 text-sm text-slate-700"
+              className="min-w-0 flex-1 rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm text-slate-700"
             />
             <button
               type="button"
               onClick={copyInvitationLink}
-              className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+              className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
             >
               Copy invitation link
             </button>
           </div>
           {copied ? (
-            <p className="text-sm font-medium text-green-700" role="status">
+            <p className="text-sm font-medium text-brand-700" role="status">
               Copied
             </p>
           ) : null}

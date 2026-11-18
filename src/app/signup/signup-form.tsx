@@ -20,7 +20,7 @@ export function SignupForm({
     <form action={action} className="space-y-5">
       {hasGroupInvitation ? (
         <p
-          className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800"
+          className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800"
           role="status"
         >
           {useAppInviteCode
@@ -50,7 +50,7 @@ export function SignupForm({
           autoComplete="name"
           required
           placeholder="Your name"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -68,7 +68,7 @@ export function SignupForm({
           autoComplete="email"
           required
           placeholder="you@example.com"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -86,7 +86,7 @@ export function SignupForm({
           autoComplete="new-password"
           required
           placeholder="At least 8 characters"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
         />
       </div>
 
@@ -96,7 +96,7 @@ export function SignupForm({
           aria-controls="signup-invite-code"
           aria-expanded={useAppInviteCode}
           onClick={() => setUseAppInviteCode(!useAppInviteCode)}
-          className="text-sm font-medium text-green-700 hover:text-green-800"
+          className="text-sm font-medium text-brand-700 hover:text-brand-800"
         >
           {useAppInviteCode
             ? "Use group invitation instead"
@@ -118,7 +118,7 @@ export function SignupForm({
             autoComplete="off"
             required
             placeholder="Enter invite code"
-            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
           />
         </div>
       ) : null}
@@ -132,14 +132,14 @@ export function SignupForm({
       <button
         type="submit"
         disabled={pending}
-        className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-70"
+        className="w-full bg-brand-600 text-white py-3 rounded-xl font-semibold hover:bg-brand-700 transition-colors disabled:opacity-70"
       >
         {pending ? "Creating Account..." : "Create Account"}
       </button>
 
       <p className="text-sm text-slate-500 text-center">
         Already have an account?{" "}
-        <Link href="/login" className="text-green-600 hover:text-green-700 font-medium">
+        <Link href="/login" className="text-brand-600 hover:text-brand-700 font-medium">
           Sign in
         </Link>
       </p>

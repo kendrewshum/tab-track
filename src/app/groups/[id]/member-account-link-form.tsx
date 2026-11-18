@@ -51,7 +51,7 @@ export function MemberAccountLinkForm({
           defaultValue={memberId ?? ""}
           onChange={submitMemberAccountLink}
           disabled={pending}
-          className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           {choices.map((choice) => (
             <option key={choice.id} value={choice.id}>
@@ -73,7 +73,7 @@ export function MemberAccountLinkForm({
         </p>
       ) : null}
       {state.success ? (
-        <p className="text-sm text-green-600 sm:basis-full" role="status">
+        <p className="text-sm text-brand-600 sm:basis-full" role="status">
           {state.success}
         </p>
       ) : null}
