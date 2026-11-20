@@ -31,6 +31,7 @@ import {
 } from "@/lib/history";
 import { addMember, deleteExpense } from "@/app/actions";
 import { generateId } from "@/lib/utils";
+import { MemberAvatar } from "@/components/member-avatar";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { DeleteGroupButton } from "./delete-group-button";
 import { ConfirmDeleteButton } from "./confirm-delete-button";
@@ -56,7 +57,7 @@ export default async function GroupPage({
   }>;
 }) {
   const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const { access } = await requireGroupAccess(id);
+  const { user, access } = await requireGroupAccess(id);
   const canManageGroup = access.role === "owner";
   const accessManagementStatus = getAccessManagementStatus(
     resolvedSearchParams.accessManagement,
@@ -183,6 +184,7 @@ export default async function GroupPage({
   const balances = calculateBalances(groupMembers, expensesWithSplits, groupSettlements);
   const debts = simplifyDebts(balances);
   const memberMap = new Map(groupMembers.map((m) => [m.id, m.name]));
+  const userMemberId = groupMembers.find((m) => m.userId === user.id)?.id ?? null;
   const totalSpend = groupExpenses.reduce((s, e) => s + e.amount, 0);
   const editedExpenseIds = new Set(groupExpenseRevisions.map((revision) => revision.expenseId));
   const postSettlementEditedExpenseIds = getPostSettlementEditedExpenseIds(
@@ -216,7 +218,7 @@ export default async function GroupPage({
   const addMemberSubmissionToken = generateId();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7 pb-24 sm:pb-0">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -225,16 +227,39 @@ export default async function GroupPage({
           </Link>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">{group.name}</h1>
           <p className="text-sm text-slate-500">
-            {groupMembers.length} members · {formatCurrency(totalSpend)} total spent
+            {groupMembers.length} members ·{" "}
+            <span className="font-mono tabular-nums">{formatCurrency(totalSpend)}</span> total
+            spent
           </p>
         </div>
         <Link
           href={`/groups/${id}/expenses/new`}
-          className="flex-shrink-0 flex items-center gap-1.5 bg-brand-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+          className="hidden sm:flex flex-shrink-0 items-center gap-1.5 bg-brand-600 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-brand-700 transition-colors"
         >
           <Plus size={16} />
           Expense
         </Link>
+      </div>
+
+      {/* Phone actions, pinned within thumb reach */}
+      <div className="sm:hidden fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 backdrop-blur px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto flex max-w-lg gap-2">
+          {debts.length > 0 && (
+            <Link
+              href={settlePageHref}
+              className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800"
+            >
+              Settle
+            </Link>
+          )}
+          <Link
+            href={`/groups/${id}/expenses/new`}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white"
+          >
+            <Plus size={16} />
+            Add expense
+          </Link>
+        </div>
       </div>
 
       {/* Balances */}
@@ -250,19 +275,24 @@ export default async function GroupPage({
             </Link>
           )}
         </div>
-        <div className="space-y-1.5">
+        <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
           {balances.map((b) => (
-            <div
-              key={b.memberId}
-              className="flex items-center justify-between bg-white rounded-lg border border-slate-200 px-4 py-2.5"
-            >
-              <span className="text-sm font-medium text-slate-800">{b.memberName}</span>
+            <div key={b.memberId} className="flex items-center gap-3 px-4 py-2.5">
+              <MemberAvatar name={b.memberName} />
+              <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium text-slate-800">
+                <span className="truncate">{b.memberName}</span>
+                {b.memberId === userMemberId && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                    you
+                  </span>
+                )}
+              </span>
               <span
-                className={`text-sm font-semibold tabular-nums ${
+                className={`shrink-0 text-sm tabular-nums ${
                   b.net > 0.01
-                    ? "text-positive"
+                    ? "font-mono font-medium text-positive"
                     : b.net < -0.01
-                    ? "text-negative"
+                    ? "font-mono font-medium text-negative"
                     : "text-slate-400"
                 }`}
               >
@@ -276,14 +306,16 @@ export default async function GroupPage({
           ))}
         </div>
         {debts.length > 0 && (
-          <div className="mt-3 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3 space-y-1.5">
+          <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 space-y-1.5">
             {debts.map((d, i) => (
               <p key={i} className="text-sm text-slate-600">
                 <span className="font-semibold text-slate-800">{d.fromName}</span>
                 {" owes "}
                 <span className="font-semibold text-slate-800">{d.toName}</span>
                 {"  "}
-                <span className="font-bold text-slate-900">{formatCurrency(d.amount)}</span>
+                <span className="font-mono font-medium text-slate-900 tabular-nums">
+                  {formatCurrency(d.amount)}
+                </span>
               </p>
             ))}
           </div>
@@ -299,8 +331,8 @@ export default async function GroupPage({
       <section>
         <h2 className="font-semibold text-slate-900 mb-3">Expenses</h2>
         {expensesWithSplits.length === 0 ? (
-          <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
-            <p className="text-slate-400 text-sm">No expenses yet</p>
+          <div className="text-center py-8 px-4 bg-slate-100/70 rounded-2xl">
+            <p className="text-slate-500 text-sm">No expenses yet</p>
             <Link
               href={`/groups/${id}/expenses/new`}
               className="mt-2 inline-flex items-center gap-1 text-sm text-brand-600 font-medium hover:text-brand-700"
@@ -309,13 +341,11 @@ export default async function GroupPage({
             </Link>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
             {[...expensesWithSplits].reverse().map((expense) => (
-              <div
-                key={expense.id}
-                className="bg-white rounded-xl border border-slate-200 px-4 py-3"
-              >
+              <div key={expense.id} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
+                  <ExpenseDate date={expense.date} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium text-slate-900 truncate">{expense.description}</p>
@@ -331,7 +361,7 @@ export default async function GroupPage({
                       )}
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Paid by {memberMap.get(expense.paidById)} · {formatDate(expense.date)}
+                      Paid by {memberMap.get(expense.paidById)}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {expense.splits.map((s) => (
@@ -345,7 +375,7 @@ export default async function GroupPage({
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="font-semibold text-slate-900">
+                    <span className="font-mono text-sm font-medium text-slate-900 tabular-nums">
                       {formatCurrency(expense.amount)}
                     </span>
                     <Link
@@ -380,16 +410,14 @@ export default async function GroupPage({
           ledger shows debt again, record another payment.
         </p>
         {activityEvents.length === 0 ? (
-          <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl">
-            <p className="text-slate-400 text-sm">No activity yet</p>
+          <div className="text-center py-8 px-4 bg-slate-100/70 rounded-2xl">
+            <p className="text-slate-500 text-sm">No activity yet</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
             {visibleActivityEvents.map((event) => (
-              <div
-                key={event.id}
-                className="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-1"
-              >
+              <div key={event.id} className="px-4 py-3 space-y-1">
                 {event.type === "expense_created" && (
                   <>
                     <p className="text-sm font-medium text-slate-900">
@@ -462,6 +490,7 @@ export default async function GroupPage({
                 )}
               </div>
             ))}
+            </div>
             {hasMoreActivity && (
               <Link
                 href={`/groups/${id}?activity=${nextActivityVisibleCount}`}
@@ -477,10 +506,11 @@ export default async function GroupPage({
       {/* Members */}
       <section>
         <h2 className="font-semibold text-slate-900 mb-3">Members</h2>
-        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 overflow-hidden">
           {groupMembers.map((m) => (
-            <div key={m.id} className="px-4 py-2.5 text-sm text-slate-700">
-              {m.name}
+            <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700">
+              <MemberAvatar name={m.name} className="h-7 w-7 text-[11px]" />
+              <span className="min-w-0 truncate">{m.name}</span>
             </div>
           ))}
           <form action={addMemberAction} className="flex gap-2 p-3">
@@ -597,6 +627,27 @@ export default async function GroupPage({
         </section>
       )}
     </div>
+  );
+}
+
+function ExpenseDate({ date }: { date: string }) {
+  const calendarDate = date.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? date;
+  const parsed = new Date(`${calendarDate}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return (
+    <time
+      dateTime={calendarDate}
+      title={formatDate(calendarDate)}
+      className="w-9 shrink-0 pt-0.5 text-center font-mono leading-tight text-slate-900"
+    >
+      <span className="block text-base font-medium tabular-nums">
+        {parsed.toLocaleDateString("en-US", { day: "2-digit" })}
+      </span>
+      <span className="block text-[10px] uppercase tracking-wide text-slate-500">
+        {parsed.toLocaleDateString("en-US", { month: "short" })}
+      </span>
+    </time>
   );
 }
 
